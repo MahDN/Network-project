@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+
+{% block title %}صفحه یافت نشد{% endblock %}
+
+{% block content %}
+    <h2>خطای 404 - صفحه یافت نشد</h2>
+    <p>متاسفانه صفحه‌ای که به دنبال آن بودید در این آدرس وجود ندارد.</p>
+     <p><a href="{{ url_for('index') }}">بازگشت به صفحه اصلی</a></p>
+{% endblock %}

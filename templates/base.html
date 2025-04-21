@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}وب اپلیکیشن ساده{% endblock %}</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 20px; background-color: #f8f9fa; color: #343a40; }
+        .container { max-width: 800px; margin: auto; padding: 25px; background-color: #fff; border: 1px solid #dee2e6; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        nav { margin-bottom: 25px; background-color: #e9ecef; padding: 12px 15px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; }
+        nav .links a, nav form button { margin-left: 12px; text-decoration: none; padding: 8px 12px; background-color: #007bff; border: none; color: white; border-radius: 4px; cursor: pointer; font-size: 0.9em; transition: background-color 0.2s ease; }
+        nav .links a:hover, nav form button:hover { background-color: #0056b3; }
+        nav .user-info { font-size: 0.9em; color: #6c757d; }
+        nav form { display: inline; margin: 0; padding: 0; }
+        .flash { padding: 12px 15px; margin-bottom: 20px; border-radius: 4px; border: 1px solid transparent; }
+        .flash.success { background-color: #d4edda; color: #155724; border-color: #c3e6cb; }
+        .flash.danger { background-color: #f8d7da; color: #721c24; border-color: #f5c6cb; }
+        .flash.info { background-color: #d1ecf1; color: #0c5460; border-color: #bee5eb; }
+        .flash.warning { background-color: #fff3cd; color: #856404; border-color: #ffeeba; }
+        .post { border: 1px solid #e9ecef; padding: 15px; margin-bottom: 15px; border-radius: 5px; background-color: #fdfdfe; }
+        .post strong { display: block; margin-bottom: 8px; color: #0056b3; font-weight: 600; }
+        .post small { color: #6c757d; font-size: 0.85em; margin-top: 10px; display: block; }
+		.post-text { white-space: pre-line; word-wrap: break-word; } <!-- new line-->
+        form label { display: block; margin-bottom: 5px; font-weight: 500; }
+        form input[type="text"], form input[type="password"], form textarea, form select { display: block; width: calc(100% - 20px); padding: 10px; margin-bottom: 15px; border: 1px solid #ced4da; border-radius: 4px; font-size: 0.95em; }
+        form input[type="checkbox"] { display: inline-block; width: auto; margin-left: 5px; vertical-align: middle; }
+        form label[for="remember"] { display: inline-block; margin-bottom: 15px; font-weight: normal; }
+        form button { width: auto; background-color: #28a745; color: white; border: none; cursor: pointer; padding: 10px 20px; font-size: 1em; border-radius: 4px; transition: background-color 0.2s ease; }
+        form button:hover { background-color: #218838; }
+        h1, h2, h3 { color: #495057; border-bottom: 1px solid #e9ecef; padding-bottom: 8px; margin-bottom: 20px; }
+        ul { list-style-type: none; padding: 0; }
+        li { background-color: #f8f9fa; border: 1px solid #e9ecef; padding: 10px; margin-bottom: 8px; border-radius: 4px; font-size: 0.95em; }
+        hr { border: none; border-top: 1px solid #e9ecef; margin-top: 25px; margin-bottom: 25px; }
+        a { color: #007bff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <nav>
+            <div class="links">
+                <a href="{{ url_for('index') }}">صفحه اصلی</a>
+                {% if current_user.is_authenticated %}
+                    {% if current_user.role == 'admin' %}
+                        <a href="{{ url_for('admin_dashboard') }}">داشبورد ادمین</a>
+                    {% endif %}
+                {% else %}
+                    <a href="{{ url_for('login') }}">ورود</a>
+                    <a href="{{ url_for('register') }}">ثبت نام</a>
+                {% endif %}
+            </div>
+            <div class="user-info">
+            {% if current_user.is_authenticated %}
+                <span>کاربر: {{ current_user.username }} ({{ current_user.role }})</span>
+                <form action="{{ url_for('logout') }}" method="post" style="display: inline; margin-right: 10px;">
+                    <button type="submit" style="background-color: #dc3545;">خروج</button>
+                </form>
+            {% endif %}
+            </div>
+        </nav>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="flash {{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

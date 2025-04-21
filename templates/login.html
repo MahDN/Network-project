@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+
+{% block title %}ورود{% endblock %}
+
+{% block content %}
+    <h2>ورود به حساب کاربری</h2>
+    <form method="post">
+        <label for="username">نام کاربری:</label>
+        <input type="text" id="username" name="username" required>
+
+        <label for="password">رمز عبور:</label>
+        <input type="password" id="password" name="password" required>
+
+        <label for="remember">
+            <input type="checkbox" id="remember" name="remember"> مرا به خاطر بسپار
+        </label>
+
+        <button type="submit">ورود</button>
+    </form>
+    <p>حساب کاربری ندارید؟ <a href="{{ url_for('register') }}">ثبت نام کنید</a></p>
+{% endblock %}

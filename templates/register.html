@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+
+{% block title %}ثبت نام{% endblock %}
+
+{% block content %}
+    <h2>ایجاد حساب کاربری جدید</h2>
+    <p>توجه: تمام کاربران جدید به عنوان کاربر عادی ثبت نام می‌شوند.</p>
+    <form method="post">
+        <label for="username">نام کاربری:</label>
+        <input type="text" id="username" name="username" required>
+
+        <label for="password">رمز عبور:</label>
+        <input type="password" id="password" name="password" required>
+
+        <button type="submit">ثبت نام</button>
+    </form>
+     <p>قبلا ثبت نام کرده‌اید؟ <a href="{{ url_for('login') }}">وارد شوید</a></p>
+{% endblock %}

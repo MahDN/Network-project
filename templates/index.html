@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+
+{% block title %}صفحه اصلی{% endblock %}
+
+{% block content %}
+    <h2>ارسال پست جدید</h2>
+    <form action="{{ url_for('submit_post') }}" method="post">
+        <label for="post_text">متن پست:</label>
+        <textarea id="post_text" name="post_text" rows="3" required></textarea>
+        <button type="submit">ارسال</button>
+    </form>
+
+    <h2>پست‌های اخیر</h2>
+    {% if posts %}
+        {% for post in posts %}
+            <div class="post">
+                <strong>{{ post.author.username }} گفت:</strong>
+                {# فیلتر | nl2br حذف شد و کلاس post-text اضافه شد #}
+                <p class="post-text">{{ post.text }}</p>
+                <small>در تاریخ: {{ post.timestamp.strftime('%Y-%m-%d %H:%M:%S') }} (UTC)</small>
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>هنوز پستی ثبت نشده است.</p>
+    {% endif %}
+{% endblock %}

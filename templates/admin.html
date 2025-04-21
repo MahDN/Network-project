@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+
+{% block title %}داشبورد ادمین{% endblock %}
+
+{% block content %}
+    <h2>داشبورد ادمین</h2>
+    <p>در این صفحه می‌توانید کاربران سیستم را مشاهده و کاربران جدید ایجاد کنید.</p>
+
+    <h3>لیست کاربران سیستم</h3>
+    {% if users %}
+    <ul>
+        {% for user in users %}
+            <li>
+                <strong>ID:</strong> {{ user.id }} |
+                <strong>نام کاربری:</strong> {{ user.username }} |
+                <strong>نقش:</strong> {{ user.role }}
+                {# در آینده: دکمه‌های ویرایش نقش / حذف کاربر #}
+            </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p>هیچ کاربری در سیستم وجود ندارد.</p>
+    {% endif %}
+
+    <hr>
+
+    <h3>افزودن کاربر جدید</h3>
+    {# فرم به مسیر /admin/create_user پست می‌شود #}
+    <form action="{{ url_for('admin_create_user') }}" method="post">
+        <label for="new_username">نام کاربری:</label>
+        <input type="text" id="new_username" name="username" required>
+
+        <label for="new_password">رمز عبور:</label>
+        <input type="password" id="new_password" name="password" required>
+
+        <label for="new_role">نقش:</label>
+        <select id="new_role" name="role">
+            <option value="user" selected>کاربر عادی (User)</option>
+            <option value="admin">ادمین (Admin)</option>
+        </select>
+
+        <button type="submit" style="background-color: #17a2b8;">ایجاد کاربر</button> {# رنگ متفاوت برای دکمه #}
+    </form>
+
+    <hr>
+    <p><a href="{{ url_for('index') }}">بازگشت به صفحه اصلی (مشاهده پست‌ها)</a></p>
+{% endblock %}

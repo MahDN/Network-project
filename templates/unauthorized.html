@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+
+{% block title %}دسترسی غیرمجاز{% endblock %}
+
+{% block content %}
+    <h2>خطای دسترسی (403)</h2>
+    <p>{{ message | default('شما اجازه دسترسی به این صفحه یا انجام این عملیات را ندارید.') }}</p>
+    <p><a href="{{ url_for('index') }}">بازگشت به صفحه اصلی</a></p>
+{% endblock %}
