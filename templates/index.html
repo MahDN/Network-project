@@ -1,56 +1,97 @@
 {% extends 'base.html' %}
 
-{% block title %}صفحه چت{% endblock %}
+{% block title %}
+    {% if search_query %}نتایج جستجو برای: {{ search_query }}{% else %}صفحه چت{% endif %}
+{% endblock %}
 
 {% block content %}
-    <h2>ارسال پست جدید</h2>
-    <form action="{{ url_for('submit_post') }}" method="post">
-        <label for="post_text">متن پست:</label>
-        <textarea id="post_text" name="post_text" rows="3" required></textarea>
-        <button type="submit">ارسال</button>
-    </form>
+    {# ---- فرم جستجو ---- #}
+    <div style="margin-bottom: 25px; padding: 15px; background-color: #f0f0f0; border-radius: 5px;">
+        <form method="get" action="{{ url_for('index') }}">
+            <label for="search">جستجو در متن پست‌ها:</label>
+            <input type="search" id="search" name="q" placeholder="عبارت مورد نظر..." value="{{ search_query or '' }}" style="width: calc(100% - 100px); display: inline-block; margin-left: 10px;">
+            <button type="submit" style="padding: 10px 15px;">جستجو</button>
+            {# دکمه پاک کردن جستجو #}
+            {% if search_query %}
+                <a href="{{ url_for('index') }}" style="margin-right: 10px; font-size: 0.9em;">پاک کردن جستجو</a>
+            {% endif %}
+        </form>
+    </div>
+    {# ---- پایان فرم جستجو ---- #}
+    <hr>
 
+    {# ---- فرم ارسال پست جدید ---- #}
+    {% if current_user.is_authenticated %}
+        <p>سلام {{ current_user.username }}! خوش آمدید.</p>
+    {% else %}
+        <p>برای ارسال پست جدید، لطفا <a href="{{ url_for('login') }}">وارد شوید</a>.</p>
+    {% endif %}
 
-    <h2>پست‌های اخیر</h2>
+    {# فقط برای کاربران وارد شده نمایش داده شود #}
+    {% if current_user.is_authenticated %}
+        <p>لطفا پست‌ خود راارسال کنید:</p>
+    {% endif %}
+    {# اگر کاربر وارد نشده باشد، فرم ارسال پست نمایش داده نمی‌شود #}
+    {% if current_user.is_authenticated %}
+        <div style="margin-bottom: 25px; padding: 15px; background-color: #f0f0f0; border-radius: 5px;">
+            <form action="{{ url_for('submit_post') }}" method="post">
+                <label for="post_text">متن پست:</label>
+                <textarea id="post_text" name="post_text" rows="3" required></textarea>
+                <button type="submit">ارسال</button>
+            </form>
+        </div>
+    {% endif %}
+    {# ---- پایان فرم ارسال پست ---- #}
+
+    <hr>
+
+    {# تغییر عنوان بخش پست‌ها بر اساس جستجو #}
+    {% if search_query %}
+        <h2>نتایج جستجو برای: "{{ search_query }}"</h2>
+    {% else %}
+        <h2>پست‌های اخیر</h2>
+    {% endif %}
+
+    {# نمایش پست‌ها (فیلتر شده یا همه) #}
     {% if posts %}
         {% for post in posts %}
+            {# ... (کد نمایش هر پست مثل قبل، شامل دکمه‌های حذف) ... #}
             <div class="post">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                     <div>
                         <strong>{{ post.author.username }} گفت:</strong>
                         <p class="post-text">{{ post.text }}</p>
                         <small>در تاریخ: {{ post.timestamp.strftime('%Y-%m-%d %H:%M:%S') }} (UTC)</small>
-						{% if current_user.role == 'admin' %}
-							<small style="display: block;">Post ID: {{ post.id }}</small>
-						{% endif %}
+                        <small style="display: block;">Post ID: {{ post.id }}</small>
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 5px; align-items: flex-end;">
-                        {# دکمه حذف برای صاحب پست #}
+                        {# دکمه حذف خودی #}
                         {% if current_user.is_authenticated and post.user_id == current_user.id %}
                             <form action="{{ url_for('delete_post', post_id=post.id) }}" method="post" style="display: inline;">
-                                <button type="submit" class="btn-delete-self" title="حذف این پست" onclick="return confirm('آیا از حذف این پست مطمئن هستید؟');" style="background: #ffc107; color: #333; border: none; padding: 3px 6px; font-size: 0.8em; cursor: pointer; border-radius: 3px;">
-                                    &#x2716; حذف (خودم)
-                                </button>
-                            </form>
+                                 <button type="submit" class="btn-delete-self" title="حذف این پست" onclick="return confirm('آیا از حذف این پست مطمئن هستید؟');" style="background: #ffc107; color: #333; border: none; padding: 3px 6px; font-size: 0.8em; cursor: pointer; border-radius: 3px;">
+                                     &#x2716; حذف پیام
+                                 </button>
+                             </form>
                         {% endif %}
-
-                        {# ---- دکمه حذف برای ادمین اصلی (ID=1) برای تمام پست‌ها ---- #}
+                        {# دکمه حذف ادمین اصلی #}
                         {% if current_user.is_authenticated and current_user.id == 1 and post.user_id != 1 %}
-                            {# نمایش دکمه حذف ادمین حتی برای پست‌های خودش، شاید بخواهد از اینجا حذف کند #}
-                            <form action="{{ url_for('admin_delete_post', post_id=post.id) }}" method="post" style="display: inline;">
-                                <button type="submit" class="btn-delete-admin" title="حذف پست توسط ادمین" onclick="return confirm('ادمین گرامی! آیا از حذف پست کاربر {{ post.author.username }} مطمئن هستید؟');" style="background: #dc3545; color: white; border: none; padding: 3px 6px; font-size: 0.8em; cursor: pointer; border-radius: 3px;">
-                                    &#x2716; حذف (ادمین)
-                                </button>
-                            </form>
-                            {# {% endif %} #}
-                        {% endif %}
-                        {# ---- پایان دکمه حذف ادمین ---- #}
+                             <form action="{{ url_for('admin_delete_post', post_id=post.id) }}" method="post" style="display: inline;">
+                                  <button type="submit" class="btn-delete-admin" title="حذف پست توسط ادمین" onclick="return confirm('ادمین گرامی! آیا از حذف پست کاربر {{ post.author.username }} مطمئن هستید؟');" style="background: #dc3545; color: white; border: none; padding: 3px 6px; font-size: 0.8em; cursor: pointer; border-radius: 3px;">
+                                      &#x2716; حذف پیام(ادمین)
+                                  </button>
+                              </form>
+                         {% endif %}
                     </div>
                 </div>
             </div>
         {% endfor %}
     {% else %}
-        <p>هنوز پستی ثبت نشده است.</p>
+        {# اگر پستی پیدا نشد یا وجود نداشته باشد #}
+        {% if search_query %}
+             <p>هیچ پستی با عبارت جستجوی شما یافت نشد.</p>
+             <p><a href="{{ url_for('index') }}">نمایش تمام پست‌ها</a></p>
+         {% else %}
+             <p>هنوز پستی ثبت نشده است.</p>
+         {% endif %}
     {% endif %}
 {% endblock %}
-
