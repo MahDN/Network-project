@@ -97,11 +97,26 @@ def is_safe_url(target):
 @app.route('/')
 @login_required
 def index():
-    """صفحه اصلی - نمایش پست‌ها"""
-    # نمایش 30 پست اخیر
-    posts_to_show = Post.query.order_by(Post.timestamp.desc()).limit(30).all()
-    return render_template('index.html', posts=posts_to_show)
+    """صفحه اصلی - نمایش پست‌ها و قابلیت جستجو"""
+        
+    search_query = request.args.get('q', '').strip() 
 
+    # پایه کوئری برای پست‌ها، مرتب شده بر اساس زمان
+    query = Post.query.order_by(Post.timestamp.desc())
+
+    if search_query:
+        query = query.filter(Post.text.ilike(f'%{search_query}%'))
+        # وقتی جستجو می‌کنیم، محدودیت 30 پست را برمی‌داریم تا همه نتایج را ببینیم
+        posts_to_show = query.all()
+    else:
+    # نمایش 30 پست اخیر
+        posts_to_show = Post.query.order_by(Post.timestamp.desc()).limit(30).all()
+        
+    # اگر کاربر ادمین باشد، همه پست‌ها را می‌بیند
+    if current_user.role == 'admin':
+        posts_to_show = query.all()
+        
+    return render_template('index.html', posts=posts_to_show, search_query=search_query)
 
 @app.route('/my-posts')
 @login_required
