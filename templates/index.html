@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}صفحه اصلی{% endblock %}
+{% block title %}صفحه چت{% endblock %}
 
 {% block content %}
     <h2>ارسال پست جدید</h2>
@@ -10,17 +10,47 @@
         <button type="submit">ارسال</button>
     </form>
 
+
     <h2>پست‌های اخیر</h2>
     {% if posts %}
         {% for post in posts %}
             <div class="post">
-                <strong>{{ post.author.username }} گفت:</strong>
-                {# فیلتر | nl2br حذف شد و کلاس post-text اضافه شد #}
-                <p class="post-text">{{ post.text }}</p>
-                <small>در تاریخ: {{ post.timestamp.strftime('%Y-%m-%d %H:%M:%S') }} (UTC)</small>
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div>
+                        <strong>{{ post.author.username }} گفت:</strong>
+                        <p class="post-text">{{ post.text }}</p>
+                        <small>در تاریخ: {{ post.timestamp.strftime('%Y-%m-%d %H:%M:%S') }} (UTC)</small>
+						{% if current_user.role == 'admin' %}
+							<small style="display: block;">Post ID: {{ post.id }}</small>
+						{% endif %}
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 5px; align-items: flex-end;">
+                        {# دکمه حذف برای صاحب پست #}
+                        {% if current_user.is_authenticated and post.user_id == current_user.id %}
+                            <form action="{{ url_for('delete_post', post_id=post.id) }}" method="post" style="display: inline;">
+                                <button type="submit" class="btn-delete-self" title="حذف این پست" onclick="return confirm('آیا از حذف این پست مطمئن هستید؟');" style="background: #ffc107; color: #333; border: none; padding: 3px 6px; font-size: 0.8em; cursor: pointer; border-radius: 3px;">
+                                    &#x2716; حذف (خودم)
+                                </button>
+                            </form>
+                        {% endif %}
+
+                        {# ---- دکمه حذف برای ادمین اصلی (ID=1) برای تمام پست‌ها ---- #}
+                        {% if current_user.is_authenticated and current_user.id == 1 and post.user_id != 1 %}
+                            {# نمایش دکمه حذف ادمین حتی برای پست‌های خودش، شاید بخواهد از اینجا حذف کند #}
+                            <form action="{{ url_for('admin_delete_post', post_id=post.id) }}" method="post" style="display: inline;">
+                                <button type="submit" class="btn-delete-admin" title="حذف پست توسط ادمین" onclick="return confirm('ادمین گرامی! آیا از حذف پست کاربر {{ post.author.username }} مطمئن هستید؟');" style="background: #dc3545; color: white; border: none; padding: 3px 6px; font-size: 0.8em; cursor: pointer; border-radius: 3px;">
+                                    &#x2716; حذف (ادمین)
+                                </button>
+                            </form>
+                            {# {% endif %} #}
+                        {% endif %}
+                        {# ---- پایان دکمه حذف ادمین ---- #}
+                    </div>
+                </div>
             </div>
         {% endfor %}
     {% else %}
         <p>هنوز پستی ثبت نشده است.</p>
     {% endif %}
 {% endblock %}
+

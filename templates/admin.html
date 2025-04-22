@@ -4,44 +4,69 @@
 
 {% block content %}
     <h2>داشبورد ادمین</h2>
-    <p>در این صفحه می‌توانید کاربران سیستم را مشاهده و کاربران جدید ایجاد کنید.</p>
+    <p>مدیریت کاربران و ایجاد کاربر جدید.</p>
 
     <h3>لیست کاربران سیستم</h3>
     {% if users %}
     <ul>
         {% for user in users %}
-            <li>
-                <strong>ID:</strong> {{ user.id }} |
-                <strong>نام کاربری:</strong> {{ user.username }} |
-                <strong>نقش:</strong> {{ user.role }}
-                {# در آینده: دکمه‌های ویرایش نقش / حذف کاربر #}
+            <li style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 15px;">
+                <div>
+                    <strong>ID:</strong> {{ user.id }} |
+                    <strong>نام کاربری:</strong> {{ user.username }} |
+                    <strong>نقش فعلی:</strong> {{ user.role }}
+                </div>
+
+                {# فقط اگر کاربر نمایش داده شده ادمین لاگین شده نباشد #}
+                {% if (user.role!= 'admin' or current_user.id == 1) and user.id != current_user.id %}
+                    <div style="display: flex; gap: 10px;">
+
+                        {# ---- فرم تغییر نقش ---- #}
+                        <form action="{{ url_for('admin_set_user_role', user_id=user.id) }}" method="post" style="display: inline-block; border-right: 1px solid #ccc; padding-right: 10px;">
+                            <select name="new_role" style="padding: 5px; margin-bottom: 5px; display: inline-block; width: auto;">
+                                <option value="user" {% if user.role == 'user' %}selected{% endif %}>کاربر عادی</option>
+                                <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>ادمین</option>
+                            </select>
+                            <label for="admin_pass_role_{{ user.id }}" style="font-size: 0.8em; display:block;">رمز عبور ادمین:</label>
+                            <input type="password" id="admin_pass_role_{{ user.id }}" name="admin_password" required placeholder="رمز عبور شما" style="padding: 5px; margin-bottom: 5px; width: 120px; display: inline-block;">
+                            <button type="submit" style="background-color: #ffc107; color: #212529; padding: 5px 8px; font-size: 0.8em;">تغییر نقش</button>
+                        </form>
+
+                        {# ---- فرم حذف کاربر ---- #}
+                        <form action="{{ url_for('admin_delete_user', user_id=user.id) }}" method="post" style="display: inline-block;">
+                            <label for="admin_pass_delete_{{ user.id }}" style="font-size: 0.8em; display:block;">رمز عبور ادمین:</label>
+                            <input type="password" id="admin_pass_delete_{{ user.id }}" name="admin_password" required placeholder="رمز عبور شما" style="padding: 5px; margin-bottom: 5px; width: 120px; display: inline-block;">
+                            <button type="submit" style="background-color: #dc3545; padding: 5px 8px; font-size: 0.8em;" onclick="return confirm('آیا از حذف کاربر {{ user.username }} مطمئن هستید؟ این عمل غیرقابل بازگشت است!');">حذف کاربر</button>
+                        </form>
+
+                    </div>
+                {% else %}
+                    <small>(مدیریت این کاربر غیرفعال است)</small>
+                {% endif %}
             </li>
         {% endfor %}
     </ul>
     {% else %}
-    <p>هیچ کاربری در سیستم وجود ندارد.</p>
+    <p>هیچ کاربری به جز شما در سیستم وجود ندارد.</p>
     {% endif %}
 
     <hr>
 
+    {# فرم افزودن کاربر جدید (بدون تغییر) #}
     <h3>افزودن کاربر جدید</h3>
-    {# فرم به مسیر /admin/create_user پست می‌شود #}
     <form action="{{ url_for('admin_create_user') }}" method="post">
-        <label for="new_username">نام کاربری:</label>
-        <input type="text" id="new_username" name="username" required>
-
-        <label for="new_password">رمز عبور:</label>
-        <input type="password" id="new_password" name="password" required>
-
-        <label for="new_role">نقش:</label>
-        <select id="new_role" name="role">
-            <option value="user" selected>کاربر عادی (User)</option>
-            <option value="admin">ادمین (Admin)</option>
-        </select>
-
-        <button type="submit" style="background-color: #17a2b8;">ایجاد کاربر</button> {# رنگ متفاوت برای دکمه #}
+         <label for="new_username">نام کاربری:</label>
+         <input type="text" id="new_username" name="username" required>
+         <label for="new_password">رمز عبور:</label>
+         <input type="password" id="new_password" name="password" required>
+         <label for="new_role">نقش:</label>
+         <select id="new_role" name="role">
+             <option value="user" selected>کاربر عادی (User)</option>
+             <option value="admin">ادمین (Admin)</option>
+         </select>
+         <button type="submit" style="background-color: #17a2b8;">ایجاد کاربر</button>
     </form>
 
     <hr>
-    <p><a href="{{ url_for('index') }}">بازگشت به صفحه اصلی (مشاهده پست‌ها)</a></p>
+    <p><a href="{{ url_for('index') }}">بازگشت به صفحه اصلی</a></p>
 {% endblock %}

@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+
+{% block title %}پروفایل کاربری{% endblock %}
+
+{% block content %}
+    <h2>پروفایل کاربری: {{ current_user.username }}</h2>
+    <p>در این صفحه می‌توانید رمز عبور خود را تغییر دهید یا حساب کاربری خود را حذف کنید.</p>
+
+    <hr>
+
+    <h3>تغییر رمز عبور</h3>
+    {# ... فرم تغییر رمز عبور (بدون تغییر) ... #}
+    <form method="post" action="{{ url_for('profile') }}">
+        <label for="current_password">رمز عبور فعلی:</label>
+        <input type="password" id="current_password" name="current_password" required>
+        <label for="new_password">رمز عبور جدید:</label>
+        <input type="password" id="new_password" name="new_password" required>
+        <label for="confirm_new_password">تکرار رمز عبور جدید:</label>
+        <input type="password" id="confirm_new_password" name="confirm_new_password" required>
+        <button type="submit" style="background-color: #ffc107; color: #212529;">تغییر رمز عبور</button>
+    </form>
+
+    <hr style="border-color: #dc3545; margin-top: 30px; margin-bottom: 30px;">
+
+    {# ---- بخش حذف حساب کاربری ---- #}
+    <h3 style="color: #dc3545;">حذف حساب کاربری</h3>
+    <p style="color: #dc3545; font-weight: bold;">هشدار: حذف حساب کاربری عملی غیرقابل بازگشت است و تمام اطلاعات شما (از جمله پست‌ها) برای همیشه پاک خواهد شد.</p>
+    {# جلوگیری از حذف ادمین اصلی (ID=1) از طریق این فرم #}
+    {% if current_user.id == 1 %}
+        <p style="color: #6c757d;">ادمین اصلی (ID=1) نمی‌تواند حساب خود را از این طریق حذف کند.</p>
+    {% else %}
+        <form method="post" action="{{ url_for('delete_profile') }}">
+            <label for="delete_confirm_password">برای تایید، رمز عبور خود را وارد کنید:</label>
+            <input type="password" id="delete_confirm_password" name="password" required>
+            <button type="submit" style="background-color: #dc3545;" onclick="return confirm('آیا واقعا مطمئن هستید که می‌خواهید حساب کاربری خود را برای همیشه حذف کنید؟');">حذف دائمی حساب کاربری من</button>
+        </form>
+    {% endif %}
+    {# ---- پایان بخش حذف حساب ---- #}
+
+{% endblock %}

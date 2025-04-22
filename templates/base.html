@@ -39,8 +39,9 @@
     <div class="container">
         <nav>
             <div class="links">
-                <a href="{{ url_for('index') }}">صفحه اصلی</a>
+                <a href="{{ url_for('index') }}">صفحه چت</a>
                 {% if current_user.is_authenticated %}
+				    <a href="{{ url_for('profile') }}">پروفایل</a>
                     {% if current_user.role == 'admin' %}
                         <a href="{{ url_for('admin_dashboard') }}">داشبورد ادمین</a>
                     {% endif %}

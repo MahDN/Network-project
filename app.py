@@ -147,6 +147,179 @@ def admin_create_user():
 
     return redirect(url_for('admin_dashboard'))
 
+
+@app.route('/admin/user/<int:user_id>/set_role', methods=['POST'])
+@login_required
+@admin_required
+def admin_set_user_role(user_id):
+    """تغییر نقش کاربر توسط ادمین"""
+    admin_password = request.form.get('admin_password')
+    new_role = request.form.get('new_role')
+
+    # 1. بررسی رمز عبور ادمین فعلی
+    if not current_user.check_password(admin_password):
+        flash('رمز عبور ادمین نادرست است.', 'danger')
+        return redirect(url_for('admin_dashboard'))
+
+    # 2. بررسی نقش جدید
+    if new_role not in ['user', 'admin']:
+        flash('نقش انتخاب شده نامعتبر است.', 'warning')
+        return redirect(url_for('admin_dashboard'))
+
+    # 3. یافتن کاربری که قرار است ویرایش شود
+    user_to_modify = db.session.get(User, user_id)
+    if not user_to_modify:
+        flash('کاربر مورد نظر یافت نشد.', 'danger')
+        return redirect(url_for('admin_dashboard'))
+
+    # 4. جلوگیری از تغییر نقش خود ادمین
+    if user_to_modify.id == current_user.id:
+        flash('شما نمی‌توانید نقش خود را تغییر دهید.', 'warning')
+        return redirect(url_for('admin_dashboard'))
+
+    # 5. انجام تغییر نقش
+    try:
+        user_to_modify.role = new_role
+        db.session.commit()
+        flash(f"نقش کاربر '{user_to_modify.username}' با موفقیت به '{new_role}' تغییر یافت.", 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'خطا در تغییر نقش کاربر: {e}', 'danger')
+        app.logger.error(f"Admin '{current_user.username}' failed to set role for user ID {user_id}: {e}")
+
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/user/<int:user_id>/delete', methods=['POST'])
+@login_required
+@admin_required
+def admin_delete_user(user_id):
+    """حذف کاربر توسط ادمین"""
+    admin_password = request.form.get('admin_password')
+
+    # 1. بررسی رمز عبور ادمین فعلی
+    if not current_user.check_password(admin_password):
+        flash('رمز عبور ادمین نادرست است.', 'danger')
+        return redirect(url_for('admin_dashboard'))
+
+    # 2. یافتن کاربری که قرار است حذف شود
+    user_to_delete = db.session.get(User, user_id)
+    if not user_to_delete:
+        flash('کاربر مورد نظر یافت نشد.', 'danger')
+        return redirect(url_for('admin_dashboard'))
+
+    # 3. جلوگیری از حذف خود ادمین
+    if user_to_delete.id == current_user.id:
+        flash('شما نمی‌توانید حساب کاربری خود را حذف کنید.', 'warning')
+        return redirect(url_for('admin_dashboard'))
+
+    # 4. انجام حذف کاربر (و پست‌هایش به خاطر cascade)
+    try:
+        username_deleted = user_to_delete.username # نام را قبل از حذف نگه داریم
+        db.session.delete(user_to_delete)
+        db.session.commit()
+        flash(f"کاربر '{username_deleted}' با موفقیت حذف شد.", 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'خطا در حذف کاربر: {e}', 'danger')
+        app.logger.error(f"Admin '{current_user.username}' failed to delete user ID {user_id}: {e}")
+
+    return redirect(url_for('admin_dashboard'))
+# این route را به بخش Routes در app.py اضافه کنید
+
+@app.route('/profile', methods=['GET', 'POST'])
+@login_required # فقط کاربران لاگین شده
+def profile():
+    """نمایش پروفایل و فرم تغییر رمز عبور"""
+    if request.method == 'POST':
+        current_password = request.form.get('current_password')
+        new_password = request.form.get('new_password')
+        confirm_new_password = request.form.get('confirm_new_password')
+
+        # 1. بررسی رمز عبور فعلی
+        if not current_user.check_password(current_password):
+            flash('رمز عبور فعلی نادرست است.', 'danger')
+        # 2. بررسی خالی نبودن رمز جدید
+        elif not new_password:
+             flash('رمز عبور جدید نمی‌تواند خالی باشد.', 'warning')
+        # 3. بررسی تطابق رمز جدید و تکرار آن
+        elif new_password != confirm_new_password:
+            flash('رمز عبور جدید و تکرار آن با هم مطابقت ندارند.', 'warning')
+        # 4. همه چیز درست است، رمز را تغییر بده
+        else:
+            try:
+                current_user.set_password(new_password) # هش کردن و تنظیم رمز جدید
+                db.session.commit() # ذخیره تغییر در دیتابیس
+                flash('رمز عبور شما با موفقیت تغییر کرد.', 'success')
+                # می‌توانید کاربر را بعد از تغییر رمز لاگ‌اوت کنید (اختیاری ولی امن‌تر)
+                # logout_user()
+                # session.clear()
+                # return redirect(url_for('login'))
+            except Exception as e:
+                db.session.rollback()
+                flash(f'خطایی هنگام تغییر رمز عبور رخ داد: {e}', 'danger')
+                app.logger.error(f"Error changing password for user '{current_user.username}': {e}")
+
+        # در صورت بروز خطا یا موفقیت (اگر ریدایرکت نشد)، دوباره فرم را نمایش بده
+        # این باعث می‌شود پیام‌های فلش نمایش داده شوند
+        # return redirect(url_for('profile')) # این باعث می‌شود پیام فلش دیده شود ولی فیلدها خالی شوند
+        # نمایش دوباره همان صفحه بهتر است تا کاربر خطا را ببیند
+        return render_template('profile.html')
+
+
+    # درخواست GET: فقط نمایش فرم
+    return render_template('profile.html')
+    
+    
+    # این route را به بخش Routes در app.py اضافه کنید
+
+@app.route('/profile/delete', methods=['POST'])
+@login_required
+def delete_profile():
+    """حذف حساب کاربری توسط خود کاربر"""
+    password = request.form.get('password')
+
+    # 1. بررسی رمز عبور کاربر فعلی
+    if not current_user.check_password(password):
+        flash('رمز عبور وارد شده برای تایید حذف نادرست است.', 'danger')
+        return redirect(url_for('profile'))
+
+    # 2. جلوگیری از حذف ادمین اصلی (ID=1)
+    #    این بررسی اضافی لازم است چون کاربر ممکن است مستقیما POST ارسال کند
+    if current_user.id == 1:
+         flash('ادمین اصلی (ID=1) اجازه حذف حساب خود را ندارد.', 'warning')
+         return redirect(url_for('profile'))
+
+    # 3. انجام عملیات حذف
+    try:
+        user_to_delete = current_user # کاربر فعلی را می‌گیریم
+        username_deleted = user_to_delete.username
+
+        # ابتدا کاربر را لاگ‌اوت می‌کنیم
+        logout_user()
+        session.clear()
+
+        # سپس کاربر را از دیتابیس حذف می‌کنیم (پست‌ها هم cascade می‌شوند)
+        db.session.delete(user_to_delete)
+        db.session.commit()
+
+        flash(f'حساب کاربری "{username_deleted}" با موفقیت برای همیشه حذف شد.', 'success')
+        # کاربر به صفحه لاگین هدایت می‌شود چون لاگ‌اوت شده
+        return redirect(url_for('login'))
+
+    except Exception as e:
+        db.session.rollback()
+        # اگر خطایی رخ داد، کاربر هنوز لاگین است (چون کامیت نشد)
+        # باید سعی کنیم کاربر را دوباره لاگین کنیم یا حداقل پیام خطا بدهیم
+        # ساده‌ترین کار نمایش خطا در صفحه پروفایل است
+        flash(f'خطایی هنگام حذف حساب رخ داد: {e}', 'danger')
+        app.logger.error(f"Error deleting profile for user '{current_user.username}': {e}") # اینجا current_user ممکن است معتبر نباشد اگر logout شده باشد
+        # بهتر است فقط به لاگین ریدایرکت کنیم چون وضعیت نامشخص است
+        # یا تلاش برای بازیابی وضعیت کاربر اگر امکان‌پذیر باشد
+        # در این مثال ساده، به لاگین هدایت می‌کنیم
+        return redirect(url_for('login')) # یا profile اگر فکر می‌کنید کاربر هنوز معتبر است
+        
+        
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     """صفحه ورود کاربر"""
@@ -223,8 +396,13 @@ def logout():
     """خروج کاربر"""
     logout_user()
     session.clear()
+    resp = redirect(url_for('login'))
+    # پاک‌سازی کوکی remember_token (کوکی پیش‌فرض Flask-Login برای remember me)
+    resp = app.make_response(resp)
+    resp.set_cookie('remember_token', '', expires=0)
+
     flash('خروج با موفقیت انجام شد.', 'success')
-    return redirect(url_for('login'))
+    return resp
 
 @app.route('/posts', methods=['POST'])
 @login_required
@@ -247,6 +425,69 @@ def submit_post():
 
     return redirect(url_for('index'))
 
+# این route را به بخش Routes در app.py اضافه کنید
+
+@app.route('/post/<int:post_id>/delete', methods=['POST'])
+@login_required
+def delete_post(post_id):
+    """حذف پست توسط نویسنده آن"""
+    post_to_delete = db.session.get(Post, post_id)
+
+    if not post_to_delete:
+        flash('پست مورد نظر یافت نشد.', 'danger')
+        # return redirect(url_for('index')) # یا abort(404)
+        abort(404)
+
+    # ---> بررسی مهم: آیا کاربر فعلی نویسنده این پست است؟ <---
+    if post_to_delete.user_id != current_user.id:
+        flash('شما اجازه حذف این پست را ندارید.', 'danger')
+        # return redirect(url_for('index')) # یا abort(403)
+        abort(403) # Forbidden
+
+    # انجام حذف
+    try:
+        db.session.delete(post_to_delete)
+        db.session.commit()
+        flash('پست شما با موفقیت حذف شد.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'خطایی هنگام حذف پست رخ داد: {e}', 'danger')
+        app.logger.error(f"User '{current_user.username}' failed to delete own post ID {post_id}: {e}")
+
+    return redirect(url_for('index'))
+
+# این route را به بخش Routes در app.py اضافه کنید
+
+@app.route('/admin/post/<int:post_id>/delete', methods=['POST'])
+@login_required
+def admin_delete_post(post_id):
+    """حذف هر پستی توسط ادمین اصلی (ID=1)"""
+
+    # ---> بررسی مهم: آیا کاربر فعلی ادمین اصلی (ID=1) است؟ <---
+    if current_user.id != 1:
+        flash('شما اجازه انجام این عملیات را ندارید.', 'danger')
+        abort(403) # Forbidden
+
+    post_to_delete = db.session.get(Post, post_id)
+
+    if not post_to_delete:
+        flash('پست مورد نظر یافت نشد.', 'danger')
+        abort(404)
+
+    # انجام حذف
+    try:
+        author_username = post_to_delete.author.username # نام نویسنده برای پیام
+        db.session.delete(post_to_delete)
+        db.session.commit()
+        flash(f'پست متعلق به کاربر "{author_username}" با موفقیت توسط ادمین حذف شد.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'خطایی هنگام حذف پست توسط ادمین رخ داد: {e}', 'danger')
+        app.logger.error(f"SuperAdmin (ID=1) failed to delete post ID {post_id}: {e}")
+
+    return redirect(url_for('index'))
+    
+    
 # --- Error Handlers ---
 @app.errorhandler(404)
 def page_not_found(e):
@@ -283,4 +524,4 @@ if __name__ == '__main__':
     init_db() # اجرای تابع ساخت دیتابیس قبل از اجرای وب سرور
     # debug=True برای توسعه مناسب است، در محیط عملیاتی False باشد
     # host='0.0.0.0' اجازه دسترسی از سایر دستگاه‌های شبکه را می‌دهد
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=62159, debug=True)

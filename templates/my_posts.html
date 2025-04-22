@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+
+{% block title %}پست‌های من{% endblock %}
+
+{% block content %}
+    <h2>پست‌های من ({{ current_user.username }})</h2>
+
+    {% if posts %}
+        {% for post in posts %}
+            <div class="post">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div>
+                        {# نمایش "شما گفتید:" یا فقط تاریخ؟ اینجا فقط تاریخ کافیست #}
+                        <p class="post-text">{{ post.text }}</p>
+                        <small>در تاریخ: {{ post.timestamp.strftime('%Y-%m-%d %H:%M:%S') }} (UTC)</small>
+                        <small style="display: block;">Post ID: {{ post.id }}</small>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 5px; align-items: flex-end;">
+                        {# دکمه حذف برای صاحب پست (که اینجا همیشه کاربر فعلی است) #}
+                        <form action="{{ url_for('delete_post', post_id=post.id) }}" method="post" style="display: inline;">
+                            <button type="submit" class="btn-delete-self" title="حذف این پست" onclick="return confirm('آیا از حذف این پست مطمئن هستید؟');" style="background: #ffc107; color: #333; border: none; padding: 3px 6px; font-size: 0.8em; cursor: pointer; border-radius: 3px;">
+                                &#x2716; حذف
+                            </button>
+                        </form>
+
+                        {# دکمه حذف ادمین اصلی اینجا هم می‌تواند باشد اگر کاربر ادمین اصلی باشد #}
+                        {% if current_user.id == 1 %}
+                            <form action="{{ url_for('admin_delete_post', post_id=post.id) }}" method="post" style="display: inline;">
+                                 <button type="submit" class="btn-delete-admin" title="حذف پست توسط ادمین" onclick="return confirm('ادمین گرامی! آیا از حذف این پست مطمئن هستید؟');" style="background: #dc3545; color: white; border: none; padding: 3px 6px; font-size: 0.8em; cursor: pointer; border-radius: 3px;">
+                                     &#x2716; حذف (ادمین)
+                                 </button>
+                             </form>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>شما هنوز هیچ پستی ارسال نکرده‌اید.</p>
+    {% endif %}
+
+    <hr>
+    <p><a href="{{ url_for('index') }}">بازگشت به صفحه اصلی</a></p>
+
+{% endblock %}
