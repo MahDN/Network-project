@@ -102,15 +102,25 @@ def index():
     posts_to_show = Post.query.order_by(Post.timestamp.desc()).limit(30).all()
     return render_template('index.html', posts=posts_to_show)
 
+
+@app.route('/my-posts')
+@login_required
+def my_posts():
+    """نمایش صفحه‌ای فقط با پست‌های کاربر لاگین شده"""
+    # واکشی پست‌های کاربر فعلی، مرتب شده بر اساس زمان (جدیدترین اول)
+    user_posts = Post.query.filter_by(user_id=current_user.id).order_by(Post.timestamp.desc()).all()
+    return render_template('my_posts.html', posts=user_posts)
+    
+    
 @app.route('/admin')
 @login_required
-@admin_required # فقط ادمین
+@admin_required
 def admin_dashboard():
     """داشبورد ادمین - نمایش کاربران و فرم افزودن کاربر"""
     all_users = User.query.order_by(User.role, User.username).all() # مرتب‌سازی بر اساس نقش و نام
     return render_template('admin.html', users=all_users)
 
-# ----> مسیر جدید برای پردازش فرم افزودن کاربر توسط ادمین <----
+# ----> افزودن کاربر جدید توسط ادمین<----
 @app.route('/admin/create_user', methods=['POST'])
 @login_required
 @admin_required
@@ -225,10 +235,10 @@ def admin_delete_user(user_id):
         app.logger.error(f"Admin '{current_user.username}' failed to delete user ID {user_id}: {e}")
 
     return redirect(url_for('admin_dashboard'))
-# این route را به بخش Routes در app.py اضافه کنید
+
 
 @app.route('/profile', methods=['GET', 'POST'])
-@login_required # فقط کاربران لاگین شده
+@login_required 
 def profile():
     """نمایش پروفایل و فرم تغییر رمز عبور"""
     if request.method == 'POST':
@@ -270,8 +280,7 @@ def profile():
     # درخواست GET: فقط نمایش فرم
     return render_template('profile.html')
     
-    
-    # این route را به بخش Routes در app.py اضافه کنید
+   
 
 @app.route('/profile/delete', methods=['POST'])
 @login_required
@@ -425,7 +434,6 @@ def submit_post():
 
     return redirect(url_for('index'))
 
-# این route را به بخش Routes در app.py اضافه کنید
 
 @app.route('/post/<int:post_id>/delete', methods=['POST'])
 @login_required
@@ -438,10 +446,9 @@ def delete_post(post_id):
         # return redirect(url_for('index')) # یا abort(404)
         abort(404)
 
-    # ---> بررسی مهم: آیا کاربر فعلی نویسنده این پست است؟ <---
+    # ---> آیا کاربر لاگین شده نویسنده پست است؟ <---
     if post_to_delete.user_id != current_user.id:
         flash('شما اجازه حذف این پست را ندارید.', 'danger')
-        # return redirect(url_for('index')) # یا abort(403)
         abort(403) # Forbidden
 
     # انجام حذف
@@ -456,14 +463,12 @@ def delete_post(post_id):
 
     return redirect(url_for('index'))
 
-# این route را به بخش Routes در app.py اضافه کنید
 
 @app.route('/admin/post/<int:post_id>/delete', methods=['POST'])
 @login_required
 def admin_delete_post(post_id):
     """حذف هر پستی توسط ادمین اصلی (ID=1)"""
 
-    # ---> بررسی مهم: آیا کاربر فعلی ادمین اصلی (ID=1) است؟ <---
     if current_user.id != 1:
         flash('شما اجازه انجام این عملیات را ندارید.', 'danger')
         abort(403) # Forbidden
@@ -495,22 +500,19 @@ def page_not_found(e):
 
 @app.errorhandler(403)
 def forbidden(e):
-    # این errorhandler زمانی فراخوانی می‌شود که abort(403) صدا زده شود
-    # یا دکوراتور admin_required دسترسی را رد کند
-    # اگر پیام خاصی در abort پاس داده شود، اینجا قابل دسترسی است (ولی ما در دکوراتور مستقیم قالب را رندر کردیم)
     return render_template('unauthorized.html', message="شما اجازه دسترسی به این صفحه را ندارید."), 403
 
 # --- Database Initialization ---
 def init_db():
-    """ایجاد جداول دیتابیس و کاربر ادمین اولیه (اگر وجود نداشته باشند)"""
+    """ایجاد جداول دیتابیس و سوپر ادمین(درصورت عدم وجود)"""
     with app.app_context():
         try:
             db.create_all()
             print("Database tables checked/created.")
-            # ایجاد کاربر ادمین پیش‌فرض
+            #ایجاد سوپر ادمین
             if not User.query.filter_by(username='admin').first():
                 admin_user = User(username='admin', role='admin')
-                admin_user.set_password('adminpass') # ---> رمز عبور ادمین اولیه <---
+                admin_user.set_password('adminpass')
                 db.session.add(admin_user)
                 db.session.commit()
                 print("Default admin user ('admin'/'adminpass') created.")
@@ -521,7 +523,5 @@ def init_db():
 
 # --- Main Execution ---
 if __name__ == '__main__':
-    init_db() # اجرای تابع ساخت دیتابیس قبل از اجرای وب سرور
-    # debug=True برای توسعه مناسب است، در محیط عملیاتی False باشد
-    # host='0.0.0.0' اجازه دسترسی از سایر دستگاه‌های شبکه را می‌دهد
+    init_db() 
     app.run(host='0.0.0.0', port=62159, debug=True)
