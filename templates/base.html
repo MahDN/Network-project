@@ -40,10 +40,10 @@
         <nav>
             <div class="links">
                 <a href="{{ url_for('index') }}">صفحه چت</a>
-                {% if current_user.is_authenticated %}
+                {% if g.user %}
 				    <a href="{{ url_for('profile') }}">پروفایل</a>
 					<a href="{{ url_for('my_posts') }}">پست‌های من</a>
-                    {% if current_user.role == 'admin' %}
+                    {% if g.user.role == 'admin' %}
                         <a href="{{ url_for('admin_dashboard') }}">داشبورد ادمین</a>
                     {% endif %}
                 {% else %}
@@ -52,8 +52,8 @@
                 {% endif %}
             </div>
             <div class="user-info">
-            {% if current_user.is_authenticated %}
-                <span>کاربر: {{ current_user.username }} ({{ current_user.role }})</span>
+            {% if g.user %}
+                <span>کاربر: {{ g.user.username }} ({{ g.user.role }})</span>
                 <form action="{{ url_for('logout') }}" method="post" style="display: inline; margin-right: 10px;">
                     <button type="submit" style="background-color: #dc3545;">خروج</button>
                 </form>

@@ -21,18 +21,18 @@
     <hr>
 
     {# ---- فرم ارسال پست جدید ---- #}
-    {% if current_user.is_authenticated %}
-        <p>سلام {{ current_user.username }}! خوش آمدید.</p>
+    {% if g.user %}
+        <p>سلام {{ g.user.username }}! خوش آمدید.</p>
     {% else %}
         <p>برای ارسال پست جدید، لطفا <a href="{{ url_for('login') }}">وارد شوید</a>.</p>
     {% endif %}
 
     {# فقط برای کاربران وارد شده نمایش داده شود #}
-    {% if current_user.is_authenticated %}
+    {% if g.user %}
         <p>لطفا پست‌ خود را ارسال کنید:</p>
     {% endif %}
     {# اگر کاربر وارد نشده باشد، فرم ارسال پست نمایش داده نمی‌شود #}
-    {% if current_user.is_authenticated %}
+    {% if g.user %}
         <div style="margin-bottom: 25px; padding: 15px; background-color: #f0f0f0; border-radius: 5px;">
             <form action="{{ url_for('submit_post') }}" method="post">
                 <label for="post_text">متن پست:</label>
@@ -68,7 +68,7 @@
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 5px; align-items: flex-end;">
                         {# دکمه حذف خودی #}
-                        {% if current_user.is_authenticated and post.user_id == current_user.id %}
+                        {% if g.user and post.user_id == g.user.id %}
                             <form action="{{ url_for('delete_post', post_id=post.id) }}" method="post" style="display: inline;">
                                  <button type="submit" class="btn-delete-self" title="حذف این پست" onclick="return confirm('آیا از حذف این پست مطمئن هستید؟');" style="background: #ffc107; color: #333; border: none; padding: 3px 6px; font-size: 0.8em; cursor: pointer; border-radius: 3px;">
                                      &#x2716; حذف پیام
@@ -76,7 +76,7 @@
                              </form>
                         {% endif %}
                         {# دکمه حذف ادمین اصلی #}
-                        {% if current_user.is_authenticated and current_user.id == 1 and post.user_id != 1 %}
+                        {% if g.user and g.user.id == 1 and post.user_id != 1 %}
                              <form action="{{ url_for('admin_delete_post', post_id=post.id) }}" method="post" style="display: inline;">
                                   <button type="submit" class="btn-delete-admin" title="حذف پست توسط ادمین" onclick="return confirm('ادمین گرامی! آیا از حذف پست کاربر {{ post.author.username }} مطمئن هستید؟');" style="background: #dc3545; color: white; border: none; padding: 3px 6px; font-size: 0.8em; cursor: pointer; border-radius: 3px;">
                                       &#x2716; حذف پیام(ادمین)

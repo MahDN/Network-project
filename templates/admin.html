@@ -18,7 +18,7 @@
                 </div>
 
                 {# فقط اگر کاربر نمایش داده شده ادمین لاگین شده نباشد #}
-                {% if (user.role!= 'admin' or current_user.id == 1) and user.id != current_user.id %}
+                {% if (user.role!= 'admin' or g.user.id == 1) and user.id != g.user.id %}
                     <div style="display: flex; gap: 10px;">
 
                         {# ---- فرم تغییر نقش ---- #}
