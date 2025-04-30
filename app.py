@@ -97,20 +97,31 @@ class ServerSession(db.Model):
 @app.before_request
 def load_user_from_server_session():
     session_id = request.cookies.get('server_session_id')
-    g.user = None # پیش فرض: کاربر لاگین نیست
-    g.current_session = None # نشست فعلی را نگه می‌داریم (برای لاگ‌اوت)
+    g.user = None
+    g.current_session = None
 
     if not session_id:
-        return # کوکی وجود ندارد
+        return
 
     server_session = ServerSession.query.filter_by(session_id=session_id).first()
 
     if server_session:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc) # <--- Aware
         session_lifetime = app.config['PERMANENT_SESSION_LIFETIME']
 
-        # انقضا بر اساس آخرین مشاهده
-        if now > server_session.last_seen + session_lifetime:
+        # فرض می‌کنیم last_seen از دیتابیس UTC است ولی naive ذخیره شده
+        # آن را aware می‌کنیم
+        try:
+            # اگر last_seen واقعا datetime باشد
+            last_seen_aware = server_session.last_seen.replace(tzinfo=timezone.utc) # <--- تبدیل به Aware
+        except AttributeError:
+            # اگر به دلایلی last_seen از نوع datetime نیست، از ادامه کار جلوگیری کن
+            app.logger.error(f"Session {session_id} has invalid last_seen type: {type(server_session.last_seen)}")
+            # شاید نشست را حذف کنیم یا فقط برگردیم
+            return
+
+        # مقایسه دو زمان aware
+        if now > last_seen_aware + session_lifetime: # <--- استفاده از نسخه aware
             print(f"Server session {session_id} expired based on last_seen.")
             try:
                 db.session.delete(server_session)
@@ -118,22 +129,22 @@ def load_user_from_server_session():
             except Exception as e:
                 db.session.rollback()
                 app.logger.error(f"Error deleting expired session {session_id}: {e}")
-            return
+            return # نشست منقضی شده، کاربر لاگین نیست
 
-        # اگر نشست معتبر است، کاربر را پیدا و در g ذخیره میشود
-        user = db.session.get(User, server_session.user_id) # استفاده از db.session.get
+
+        # بقیه منطق تابع بدون تغییر...
+        user = db.session.get(User, server_session.user_id)
         if user:
             g.user = user
             g.current_session = server_session
-            # به‌روزرسانی زمان آخرین مشاهده نشست
             try:
-                server_session.last_seen = now
+                # به‌روزرسانی last_seen با زمان aware فعلی
+                server_session.last_seen = now # <--- ذخیره زمان aware
                 db.session.commit()
             except Exception as e:
                 db.session.rollback()
                 app.logger.warning(f"Could not update last_seen for session {session_id}: {e}")
         else:
-            # اگر کاربر مرتبط با نشست پیدا نشد، نشست را پاک کن
             print(f"User ID {server_session.user_id} not found for session {session_id}. Deleting session.")
             try:
                 db.session.delete(server_session)
@@ -145,7 +156,6 @@ def load_user_from_server_session():
 
 # --- Helper Functions ---
 
-# *** دکوراتور دستی به جای @login_required از flask-login ***
 def login_required_server_session(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
