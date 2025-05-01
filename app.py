@@ -16,7 +16,7 @@ from urllib.parse import urlparse, urljoin
 # --- Configuration ---
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a-very-secure-dev-secret-key-manual') # کلید مخفی حیاتی است
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=2) # زمان انقضای نشست
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=1) # زمان انقضای نشست
 
 # --- Database Configuration ---
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -441,26 +441,26 @@ def delete_profile():
 # *** تابع لاگین با ایجاد نشست سمت سرور ***
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    """صفحه ورود کاربر (دستی با نشست سمت سرور)"""
-    # اگر کاربر از قبل لاگین است (از before_request)
+    """صفحه ورود کاربر (دستی با نشست سمت سرور و Remember Me)"""
     if getattr(g, 'user', None):
         return redirect(url_for('index'))
 
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
+        # خواندن وضعیت چک باکس "مرا به خاطر بسپار"
+        remember_me = request.form.get('remember') == 'on' # اگر چک شده باشد، مقدار 'on' ارسال می‌شود
 
         user = User.query.filter_by(username=username).first()
 
-        # استفاده مستقیم از تابع check_password کاربر
         if user and user.check_password(password):
-            # کاربر معتبر است -> ایجاد نشست سمت سرور
             session_id = secrets.token_urlsafe(32)
             new_session = ServerSession(
                 session_id=session_id,
                 user_id=user.id,
                 user_agent=request.user_agent.string,
                 ip_address=request.remote_addr
+                # last_seen و created_at به طور خودکار مقداردهی می‌شوند
             )
             try:
                 db.session.add(new_session)
@@ -468,20 +468,27 @@ def login():
 
                 flash('ورود با موفقیت انجام شد.', 'success')
 
-                # تعیین صفحه بعد از لاگین
                 next_page = request.args.get('next')
                 if next_page and not is_safe_url(next_page):
-                    abort(400) # جلوگیری از Open Redirect
+                    abort(400)
 
-                # اگر ادمین بود به داشبورد برود (مگر اینکه next_page خاصی باشد)
                 redirect_target = next_page or (url_for('admin_dashboard') if user.role == 'admin' else url_for('index'))
                 response = make_response(redirect(redirect_target))
 
-                # تنظیم کوکی HttpOnly برای نشست
+                if remember_me:
+                    # اگر "مرا به خاطر بسپار" فعال بود، کوکی برای 1 روز تنظیم شود
+                    cookie_max_age = timedelta(days=1).total_seconds()
+                    print("Remember Me active: Cookie max_age set to 1 day.") # برای دیباگ
+                else:
+                    # در غیر این صورت، از زمان پیش‌فرض برنامه استفاده کن (1 دقیقه)
+                    cookie_max_age = app.config['PERMANENT_SESSION_LIFETIME'].total_seconds()
+                    print(f"Remember Me inactive: Cookie max_age set to {app.config['PERMANENT_SESSION_LIFETIME']}.") # برای دیباگ
+
+                # تنظیم کوکی با max_age محاسبه شده
                 response.set_cookie(
                     'server_session_id',
                     session_id,
-                    max_age=int(app.config['PERMANENT_SESSION_LIFETIME'].total_seconds()),
+                    max_age=int(cookie_max_age),
                     httponly=True,
                     # secure=True, # در HTTPS فعال شود
                     # samesite='Lax'
@@ -495,7 +502,6 @@ def login():
         else:
             flash('نام کاربری یا رمز عبور نامعتبر است.', 'danger')
 
-    # نمایش فرم لاگین در حالت GET یا اگر لاگین ناموفق بود
     return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
