@@ -79,13 +79,19 @@ class ServerSession(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     session_id = db.Column(db.String(100), unique=True, nullable=False, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    # *** فیلد جدید برای ذخیره وضعیت Remember Me ***
+    remembered = db.Column(db.Boolean, default=False, nullable=False)
+    # ***
     created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     last_seen = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     user_agent = db.Column(db.String(200))
     ip_address = db.Column(db.String(50))
 
+    # ایجاد رابطه (اختیاری ولی مفید)
+    #user = db.relationship('User')
+
     def __repr__(self):
-        return f'<ServerSession {self.session_id} for User {self.user_id}>'
+        return f'<ServerSession {self.session_id} for User {self.user_id} (Remembered: {self.remembered})>'
 
 
 # --- Flask-Login User Loader (دستی شد)---
@@ -95,42 +101,46 @@ class ServerSession(db.Model):
 
 # --- Manual User Loading from Server Session Cookie ---
 @app.before_request
+@app.before_request
 def load_user_from_server_session():
     session_id = request.cookies.get('server_session_id')
     g.user = None
     g.current_session = None
-
     if not session_id:
         return
 
     server_session = ServerSession.query.filter_by(session_id=session_id).first()
 
     if server_session:
-        now = datetime.now(timezone.utc) # <--- Aware
-        session_lifetime = app.config['PERMANENT_SESSION_LIFETIME']
+        now = datetime.now(timezone.utc)
 
-        # فرض می‌کنیم last_seen از دیتابیس UTC است ولی naive ذخیره شده
-        # آن را aware می‌کنیم
+        # *** تعیین طول عمر نشست سرور بر اساس فیلد remembered ***
+        if server_session.remembered:
+            # اگر Remember Me فعال بوده، عمر نشست در سرور 1 روز است
+            session_lifetime = timedelta(days=1)
+            print(f"Session {session_id} is 'Remembered'. Using 1 day lifetime for server check.") # دیباگ
+        else:
+            # در غیر این صورت، از عمر پیش‌فرض برنامه استفاده کن (30 دقیقه)
+            session_lifetime = app.config['PERMANENT_SESSION_LIFETIME']
+            print(f"Session {session_id} is not 'Remembered'. Using {session_lifetime} lifetime for server check.") # دیباگ
+        # ***
+
         try:
-            # اگر last_seen واقعا datetime باشد
-            last_seen_aware = server_session.last_seen.replace(tzinfo=timezone.utc) # <--- تبدیل به Aware
+            last_seen_aware = server_session.last_seen.replace(tzinfo=timezone.utc)
         except AttributeError:
-            # اگر به دلایلی last_seen از نوع datetime نیست، از ادامه کار جلوگیری کن
-            app.logger.error(f"Session {session_id} has invalid last_seen type: {type(server_session.last_seen)}")
-            # شاید نشست را حذف کنیم یا فقط برگردیم
-            return
+             app.logger.error(f"Session {session_id} has invalid last_seen type: {type(server_session.last_seen)}")
+             return
 
-        # مقایسه دو زمان aware
-        if now > last_seen_aware + session_lifetime: # <--- استفاده از نسخه aware
-            print(f"Server session {session_id} expired based on last_seen.")
+        # مقایسه با طول عمر محاسبه شده (session_lifetime)
+        if now > last_seen_aware + session_lifetime: # <--- استفاده از session_lifetime درست
+            print(f"Server session {session_id} expired based on last_seen and its lifetime ({session_lifetime}).")
             try:
                 db.session.delete(server_session)
                 db.session.commit()
             except Exception as e:
                 db.session.rollback()
                 app.logger.error(f"Error deleting expired session {session_id}: {e}")
-            return # نشست منقضی شده، کاربر لاگین نیست
-
+            return # نشست منقضی شده
 
         # بقیه منطق تابع بدون تغییر...
         user = db.session.get(User, server_session.user_id)
@@ -138,8 +148,7 @@ def load_user_from_server_session():
             g.user = user
             g.current_session = server_session
             try:
-                # به‌روزرسانی last_seen با زمان aware فعلی
-                server_session.last_seen = now # <--- ذخیره زمان aware
+                server_session.last_seen = now
                 db.session.commit()
             except Exception as e:
                 db.session.rollback()
@@ -152,7 +161,6 @@ def load_user_from_server_session():
             except Exception as e:
                 db.session.rollback()
                 app.logger.error(f"Error deleting session for non-existent user {server_session.user_id}: {e}")
-
 
 # --- Helper Functions ---
 
@@ -441,15 +449,14 @@ def delete_profile():
 # *** تابع لاگین با ایجاد نشست سمت سرور ***
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    """صفحه ورود کاربر (دستی با نشست سمت سرور و Remember Me)"""
+    """صفحه ورود کاربر (دستی با نشست سمت سرور و Remember Me هماهنگ)"""
     if getattr(g, 'user', None):
         return redirect(url_for('index'))
 
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        # خواندن وضعیت چک باکس "مرا به خاطر بسپار"
-        remember_me = request.form.get('remember') == 'on' # اگر چک شده باشد، مقدار 'on' ارسال می‌شود
+        remember_me = request.form.get('remember') == 'on'
 
         user = User.query.filter_by(username=username).first()
 
@@ -458,10 +465,11 @@ def login():
             new_session = ServerSession(
                 session_id=session_id,
                 user_id=user.id,
+                remembered=remember_me,
                 user_agent=request.user_agent.string,
                 ip_address=request.remote_addr
-                # last_seen و created_at به طور خودکار مقداردهی می‌شوند
             )
+            
             try:
                 db.session.add(new_session)
                 db.session.commit()
@@ -476,15 +484,10 @@ def login():
                 response = make_response(redirect(redirect_target))
 
                 if remember_me:
-                    # اگر "مرا به خاطر بسپار" فعال بود، کوکی برای 1 روز تنظیم شود
                     cookie_max_age = timedelta(days=1).total_seconds()
-                    print("Remember Me active: Cookie max_age set to 1 day.") # برای دیباگ
                 else:
-                    # در غیر این صورت، از زمان پیش‌فرض برنامه استفاده کن (1 دقیقه)
                     cookie_max_age = app.config['PERMANENT_SESSION_LIFETIME'].total_seconds()
-                    print(f"Remember Me inactive: Cookie max_age set to {app.config['PERMANENT_SESSION_LIFETIME']}.") # برای دیباگ
 
-                # تنظیم کوکی با max_age محاسبه شده
                 response.set_cookie(
                     'server_session_id',
                     session_id,
@@ -523,7 +526,6 @@ def register():
             flash('این نام کاربری قبلا ثبت شده است. لطفا نام دیگری انتخاب کنید.', 'warning')
             return render_template('register.html'), 409 # Conflict
 
-        # کاربران جدید همیشه با نقش 'user' ایجاد می‌شوند
         new_user = User(username=username, role='user')
         new_user.set_password(password) # هش کردن رمز
 
