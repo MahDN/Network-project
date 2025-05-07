@@ -9,7 +9,7 @@
     <hr>
 
     <h3>تغییر رمز عبور</h3>
-    {# ... فرم تغییر رمز عبور (بدون تغییر) ... #}
+    {# ... فرم تغییر رمز عبور ... #}
     <form method="post" action="{{ url_for('profile') }}">
         <label for="current_password">رمز عبور فعلی:</label>
         <input type="password" id="current_password" name="current_password" required>
@@ -29,12 +29,71 @@
     {% if g.user.id == 1 %}
         <p style="color: #6c757d;">ادمین اصلی (ID=1) نمی‌تواند حساب خود را از این طریق حذف کند.</p>
     {% else %}
-        <form method="post" action="{{ url_for('delete_profile') }}">
-            <label for="delete_confirm_password">برای تایید، رمز عبور خود را وارد کنید:</label>
-            <input type="password" id="delete_confirm_password" name="password" required>
-            <button type="submit" style="background-color: #dc3545;" onclick="return confirm('آیا واقعا مطمئن هستید که می‌خواهید حساب کاربری خود را برای همیشه حذف کنید؟');">حذف دائمی حساب کاربری من</button>
-        </form>
-    {% endif %}
-    {# ---- پایان بخش حذف حساب ---- #}
+    <form id="deleteProfileForm" action="{{ url_for('delete_profile') }}" method="POST"> <label for="delete_confirm_password">برای تایید، رمز عبور خود را وارد کنید:</label>
+        <input type="password" id="delete_confirm_password" name="password" required>
+        <button type="button" id="submitDeleteProfile" style="background-color: #dc3545;">حذف دائمی حساب کاربری من</button>
+    </form>
+    <div id="deleteProfileMessage" style="margin-top: 10px;"></div> {% endif %}
 
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+const deleteButton = document.getElementById('submitDeleteProfile');
+const deleteForm = document.getElementById('deleteProfileForm'); // ممکن است برای CSRF token نیاز باشد
+const passwordInput = document.getElementById('delete_confirm_password');
+const messageDiv = document.getElementById('deleteProfileMessage');
+
+if (deleteButton) {
+    deleteButton.addEventListener('click', function (event) {
+        event.preventDefault(); // جلوگیری از ارسال پیش‌فرض فرم
+
+        if (!confirm('آیا واقعا مطمئن هستید که می‌خواهید حساب کاربری خود را برای همیشه حذف کنید؟')) {
+            return; // اگر کاربر "Cancel" را زد، کاری انجام نده
+        }
+
+        const password = passwordInput.value;
+        if (!password) {
+            messageDiv.textContent = 'لطفا رمز عبور خود را وارد کنید.';
+            messageDiv.className = 'flash danger'; // از کلاس‌های فلش برای نمایش استفاده کنید
+            return;
+        }
+
+        messageDiv.textContent = 'در حال پردازش...';
+        messageDiv.className = 'flash info';
+
+        fetch("{{ url_for('delete_profile') }}", {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ password: password })
+        })
+        .then(response => response.json().then(data => ({ status: response.status, body: data }))) // هم وضعیت و هم بدنه را بگیریم
+        .then(({ status, body }) => {
+            messageDiv.textContent = body.message || 'پاسخی از سرور دریافت نشد.';
+            if (body.status === 'success') {
+                messageDiv.className = 'flash success';
+                // پاک کردن کوکی نشست سمت کلاینت اگر لازم باشد
+                // document.cookie = "server_session_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;"; // <-- پاک کردن کوکی
+                // سپس ریدایرکت به صفحه لاگین که سرور گفته
+                if (body.redirect_url) {
+                    window.location.href = body.redirect_url;
+                } else {
+                     // اگر URL ریدایرکت نبود، به صفحه اصلی یا لاگین برویم
+                    window.location.href = "{{ url_for('login', _external=True) }}";
+                }
+            } else {
+                messageDiv.className = 'flash danger';
+                // اگر کد وضعیت خاصی مد نظر است، می‌توانید آن را هم بررسی کنید
+                // مثلا if (status === 403) { ... }
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            messageDiv.textContent = 'خطا در برقراری ارتباط با سرور: ' + error;
+            messageDiv.className = 'flash danger';
+        });
+    });
+}
+});
+</script>
 {% endblock %}

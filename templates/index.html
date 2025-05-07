@@ -67,22 +67,27 @@
                         <small style="display: block;">Post ID: {{ post.id }}</small>
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 5px; align-items: flex-end;">
-                        {# دکمه حذف خودی #}
+                        {# دکمه حذف خودی ز#}
                         {% if g.user and post.user_id == g.user.id %}
-                            <form action="{{ url_for('delete_post', post_id=post.id) }}" method="post" style="display: inline;">
-                                 <button type="submit" class="btn-delete-self" title="حذف این پست" onclick="return confirm('آیا از حذف این پست مطمئن هستید؟');" style="background: #ffc107; color: #333; border: none; padding: 3px 6px; font-size: 0.8em; cursor: pointer; border-radius: 3px;">
-                                     &#x2716; حذف پیام
-                                 </button>
-                             </form>
+                            <button type="button" class="btn-delete-self"
+                                    data-post-id="{{ post.id }}"
+                                    data-delete-url="{{ url_for('delete_post', post_id=post.id) }}"
+                                    title="حذف این پست"
+                                    style="background: #ffc107; color: #333; border: none; padding: 3px 6px; font-size: 0.8em; cursor: pointer; border-radius: 3px;">
+                                &#x2716; حذف پیام
+                            </button>
                         {% endif %}
                         {# دکمه حذف ادمین اصلی #}
                         {% if g.user and g.user.id == 1 and post.user_id != 1 %}
-                             <form action="{{ url_for('admin_delete_post', post_id=post.id) }}" method="post" style="display: inline;">
-                                  <button type="submit" class="btn-delete-admin" title="حذف پست توسط ادمین" onclick="return confirm('ادمین گرامی! آیا از حذف پست کاربر {{ post.author.username }} مطمئن هستید؟');" style="background: #dc3545; color: white; border: none; padding: 3px 6px; font-size: 0.8em; cursor: pointer; border-radius: 3px;">
-                                      &#x2716; حذف پیام(ادمین)
-                                  </button>
-                              </form>
-                         {% endif %}
+                            <button type="button" class="btn-delete-by-admin"
+                                data-post-id="{{ post.id }}"
+                                data-author-username="{{ post.author.username }}"
+                                data-delete-url="{{ url_for('admin_delete_post', post_id=post.id) }}"
+                                title="حذف پست توسط ادمین"
+                                style="background: #dc3545; color: white; border: none; padding: 3px 6px; font-size: 0.8em; cursor: pointer; border-radius: 3px;">
+                                &#x2716; حذف پیام (ادمین)
+                            </button>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -96,4 +101,98 @@
              <p>هنوز پستی ثبت نشده است.</p>
          {% endif %}
     {% endif %}
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // --- اسکریپت برای حذف پست توسط خود کاربر ---
+            document.querySelectorAll('.btn-delete-self').forEach(button => {
+                button.addEventListener('click', function () {
+                    const postId = this.dataset.postId;
+                    const deleteUrl = this.dataset.deleteUrl;
+        
+                    if (!confirm('آیا از حذف این پست مطمئن هستید؟')) {
+                        return;
+                    }
+        
+                    fetch(deleteUrl, {
+                        method: 'DELETE',
+                        headers: {'Content-Type': 'application/json'}
+                    })
+                    .then(response => response.json().then(data => ({ status: response.status, body: data })))
+                    .then(({ status, body }) => {
+                        if (body.status === 'success') {
+                            const postElement = document.getElementById('post-' + postId);
+                            if (postElement) postElement.remove();
+                            showFlashMessage(body.message, 'success');
+                        } else {
+                            // alert('خطا در حذف پست: ' + body.message);
+                            showFlashMessage('خطا در حذف پست: ' + body.message, 'danger');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error deleting own post:', error);
+                        // alert('خطا در ارتباط با سرور برای حذف پست.')
+                        showFlashMessage('خطا در ارتباط با سرور برای حذف پست.', 'danger');
+                    });
+                });
+            });
+        
+            // --- اسکریپت  برای حذف پست توسط ادمین ---
+            document.querySelectorAll('.btn-delete-by-admin').forEach(button => {
+                button.addEventListener('click', function () {
+                    const postId = this.dataset.postId;
+                    const deleteUrl = this.dataset.deleteUrl;
+                    const authorUsername = this.dataset.authorUsername; // نام نویسنده برای پیام تایید
+        
+                    // پیام تایید مخصوص ادمین
+                    if (!confirm(`ادمین گرامی! آیا از حذف پست کاربر ${authorUsername} (ID: ${postId}) مطمئن هستید؟`)) {
+                        return;
+                    }
+        
+                    fetch(deleteUrl, {
+                        method: 'DELETE',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                    .then(response => response.json().then(data => ({ status: response.status, body: data })))
+                    .then(({ status, body }) => {
+                        if (body.status === 'success') {
+                            const postElement = document.getElementById('post-' + postId);
+                            if (postElement) {
+                                postElement.remove();
+                            }
+                            showFlashMessage(body.message, 'success');
+                        } else {
+                            showFlashMessage('خطا در حذف پست توسط ادمین: ' + body.message, 'danger');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error deleting post by admin:', error);
+                        showFlashMessage('خطا در ارتباط با سرور برای حذف پست توسط ادمین.', 'danger');
+                    });
+                });
+            });
+        
+            // تابع کمکی برای نمایش پیام‌های موقت شبیه فلش (اختیاری)
+            // این تابع را باید در جایی از base.html یا همینجا تعریف کنید
+            // و مطمئن شوید که یک div با id="temporary-flash-messages" در بالای صفحه (مثلا در base.html) دارید.
+            function showFlashMessage(message, category) {
+                const flashContainer = document.getElementById('temporary-flash-messages-container'); // محفظه‌ای برای پیام‌ها
+                if (!flashContainer) {
+                    console.warn("Container for temporary flash messages not found. Using alert.");
+                    alert(message); // Fallback
+                    return;
+                }
+                const flashDiv = document.createElement('div');
+                flashDiv.className = `flash ${category}`; // از کلاس‌های CSS فلش خودتان استفاده کنید
+                flashDiv.textContent = message;
+                flashContainer.appendChild(flashDiv);
+                // حذف پیام پس از چند ثانیه
+                setTimeout(() => {
+                    flashDiv.style.opacity = '0'; // شروع محو شدن
+                    setTimeout(() => { flashDiv.remove(); }, 500); // حذف پس از محو شدن
+                }, 3000); // نمایش برای ۳ ثانیه
+            }
+        });
+        </script>
 {% endblock %}

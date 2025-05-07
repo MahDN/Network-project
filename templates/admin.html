@@ -33,12 +33,18 @@
                         </form>
 
                         {# ---- فرم حذف کاربر ---- #}
-                        <form action="{{ url_for('admin_delete_user', user_id=user.id) }}" method="post" style="display: inline-block;">
+                        <div class="delete-user-section" data-user-id="{{ user.id }}">
                             <label for="admin_pass_delete_{{ user.id }}" style="font-size: 0.8em; display:block;">رمز عبور ادمین:</label>
-                            <input type="password" id="admin_pass_delete_{{ user.id }}" name="admin_password" required placeholder="رمز عبور شما" style="padding: 5px; margin-bottom: 5px; width: 120px; display: inline-block;">
-                            <button type="submit" style="background-color: #dc3545; padding: 5px 8px; font-size: 0.8em;" onclick="return confirm('آیا از حذف کاربر {{ user.username }} مطمئن هستید؟ این عمل غیرقابل بازگشت است!');">حذف کاربر</button>
-                        </form>
-
+                            <input type="password" id="admin_pass_delete_{{ user.id }}" class="admin-password-for-delete" required placeholder="رمز عبور شما" style="padding: 5px; margin-bottom: 5px; width: 120px; display: inline-block;">
+                            <button type="button" class="btn-admin-delete-user"
+                                    data-user-id="{{ user.id }}"
+                                    data-username="{{ user.username }}"
+                                    data-delete-url="{{ url_for('admin_delete_user', user_id=user.id) }}"
+                                    style="background-color: #dc3545; padding: 5px 8px; font-size: 0.8em;">
+                                حذف کاربر
+                            </button>
+                            <span class="delete-user-message" style="font-size: 0.8em; margin-left: 5px;"></span>
+                        </div>
                     </div>
                 {% else %}
                     <small>(مدیریت این کاربر غیرفعال است)</small>
@@ -69,4 +75,63 @@
 
     <hr>
     <p><a href="{{ url_for('index') }}">بازگشت به صفحه اصلی</a></p>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // --- اسکریپت برای حذف کاربر توسط ادمین ---
+            document.querySelectorAll('.btn-admin-delete-user').forEach(button => {
+                button.addEventListener('click', function () {
+                    const userId = this.dataset.userId;
+                    const deleteUrl = this.dataset.deleteUrl;
+                    const usernameToDelete = this.dataset.username;
+        
+                    // پیدا کردن فیلد رمز عبور ادمین مربوط به همین کاربر
+                    // با فرض اینکه فیلد رمز و دکمه در یک والد مشترک نزدیک هستند
+                    // یا از طریق ID که شامل userId است.
+                    const passwordInput = document.getElementById(`admin_pass_delete_${userId}`);
+                    const adminPassword = passwordInput ? passwordInput.value : '';
+        
+                    const messageSpan = this.closest('.delete-user-section').querySelector('.delete-user-message');
+        
+                    if (!adminPassword) {
+                        if(messageSpan) messageSpan.textContent = 'رمز عبور ادمین الزامی است.';
+                        else alert('رمز عبور ادمین الزامی است.');
+                        return;
+                    }
+        
+                    if (!confirm(`آیا از حذف کاربر '${usernameToDelete}' (ID: ${userId}) مطمئن هستید؟ این عمل غیرقابل بازگشت است!`)) {
+                        return;
+                    }
+        
+                    if(messageSpan) messageSpan.textContent = 'در حال پردازش...';
+        
+                    fetch(deleteUrl, {
+                        method: 'DELETE',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ admin_password: adminPassword }) // ارسال رمز عبور ادمین
+                    })
+                    .then(response => response.json().then(data => ({ status: response.status, body: data })))
+                    .then(({ status, body }) => {
+                        if (body.status === 'success') {
+                            const userListItemElement = document.getElementById(`user-list-item-${userId}`);
+                            if (userListItemElement) {
+                                userListItemElement.remove();
+                            }
+                            if(messageSpan) messageSpan.textContent = body.message;
+                            else alert(body.message); 
+                        } else {
+                            if(messageSpan) messageSpan.textContent = 'خطا: ' + body.message;
+                            else alert('خطا در حذف کاربر: ' + body.message);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error deleting user by admin:', error);
+                        if(messageSpan) messageSpan.textContent = 'خطای ارتباط با سرور.';
+                        else alert('خطا در ارتباط با سرور برای حذف کاربر.');
+                    });
+                });
+            });
+        });
+        </script>
 {% endblock %}

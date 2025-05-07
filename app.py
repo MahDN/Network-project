@@ -1,7 +1,6 @@
 import os
 import secrets
-from flask import (Flask, render_template, request, redirect, url_for,
-                   flash, abort, make_response, g) # g برای ذخیره اطلاعات کاربر در طول یک درخواست استفاده می‌شود
+from flask import (Flask, render_template, request, redirect, url_for, jsonify, flash, abort, make_response, g) # g برای ذخیره اطلاعات کاربر در طول یک درخواست استفاده می‌شود
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta, timezone
@@ -20,10 +19,11 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'app.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False # غیرفعال کردن ردیابی تغییرات SQLAlchemy برای بهینه‌سازی
 
-# --- مقداردهی اولیه افزونه‌ها ---
+# --- مقداردهی اولیه برای مدلها ---
 db = SQLAlchemy(app)
 
-# --- کنترل Cache مرورگر ---
+
+# --- کنترل کش مرورگر ---
 @app.after_request
 def set_response_headers(response):
     """
@@ -36,8 +36,8 @@ def set_response_headers(response):
         response.headers['Expires'] = '0'
     return response
 
-# --- مدل‌های پایگاه داده (SQLAlchemy) ---
 
+# --- مدل های دیتابیس ---
 class User(db.Model):
     """مدل برای ذخیره اطلاعات کاربران."""
     id = db.Column(db.Integer, primary_key=True)
@@ -60,6 +60,7 @@ class User(db.Model):
     def __repr__(self):
         return f'<User {self.username} (Role: {self.role})>'
 
+
 class Post(db.Model):
     """مدل برای ذخیره پست‌های متنی کاربران."""
     id = db.Column(db.Integer, primary_key=True)
@@ -69,6 +70,7 @@ class Post(db.Model):
 
     def __repr__(self):
         return f'<Post {self.id} by User {self.user_id}>'
+
 
 class ServerSession(db.Model):
     """مدل برای ذخیره اطلاعات نشست‌های فعال کاربران در سمت سرور."""
@@ -163,7 +165,7 @@ def load_user_from_server_session():
                 db.session.commit()
             except Exception as e:
                 db.session.rollback()
-                # اگر به‌روزرسانی last_seen ناموفق بود، مشکل جدی نیست ولی لاگ می‌گیریم
+                # اگر به‌روزرسانی last_seen ناموفق بود، لاگ می‌گیریم
                 app.logger.warning(f"Could not update last_seen for session {session_id}: {e}")
         else:
             # اگر کاربری با آن user_id وجود نداشت (مثلا کاربر حذف شده)، نشست را حذف می‌کنیم
@@ -176,8 +178,9 @@ def load_user_from_server_session():
                 app.logger.error(f"Error deleting session for non-existent user {server_session.user_id}: {e}")
             # چون کاربر یافت نشد، g.user و g.current_session همان None باقی می‌مانند
 
-# --- توابع کمکی و دکوراتورها ---
 
+
+# --- توابع کمکی و دکوراتورها ---
 def login_required_server_session(f):
     """
     دکوراتور برای مسیرهایی که نیاز به لاگین کاربر دارند.
@@ -204,7 +207,7 @@ def admin_required(func):
         # کاربر باید لاگین باشد و نقش ادمین داشته باشد
         if current_user is None or current_user.role != 'admin':
             # نمایش خطای 403 (Forbidden) با پیام مناسب
-            abort(403, description="شما دسترسی ادمین برای مشاهده این صفحه را ندارید.")
+            abort(403, description="برای دسترسی به این صفحه باید ادمین باشید.")
         return func(*args, **kwargs)
     return decorated_view
 
@@ -219,8 +222,9 @@ def is_safe_url(target):
     # بررسی می‌کند که پروتکل http یا https باشد و نام دامنه یکی باشد
     return test_url.scheme in ('http', 'https') and ref_url.netloc == test_url.netloc
 
-# --- مسیرها (Routes) ---
 
+
+# --- routes ---
 @app.route('/')
 @login_required_server_session # این صفحه نیاز به لاگین دارد
 def index():
@@ -254,7 +258,7 @@ def index():
 @app.route('/my-posts')
 @login_required_server_session # نیاز به لاگین
 def my_posts():
-    """صفحه نمایش پست‌های فقط کاربر لاگین شده."""
+    """صفحه نمایش پست‌های کاربر لاگین شده."""
     # فیلتر کردن پست‌ها بر اساس user_id کاربر فعلی (g.user.id)
     user_posts = Post.query.filter_by(user_id=g.user.id).order_by(Post.timestamp.desc()).all()
     return render_template('my_posts.html', posts=user_posts)
@@ -351,43 +355,44 @@ def admin_set_user_role(user_id):
     return redirect(url_for('admin_dashboard'))
 
 
-@app.route('/admin/user/<int:user_id>/delete', methods=['POST'])
-@login_required_server_session # نیاز به لاگین
-@admin_required             # نیاز به دسترسی ادمین
+@app.route('/admin/user/<int:user_id>/delete', methods=['DELETE']) # <--- تغییر از POST به DELETE
+@login_required_server_session
+@admin_required
 def admin_delete_user(user_id):
-    """حذف یک کاربر توسط ادمین."""
-    admin_password = request.form.get('admin_password') # رمز عبور ادمین فعلی برای تایید
+    """حذف کاربر توسط ادمین با متد DELETE"""
+    # خواندن اطلاعات از بدنه درخواست JSON
+    data = request.get_json()
+    if not data or 'admin_password' not in data:
+        return jsonify({'status': 'error', 'message': 'رمز عبور ادمین برای تایید حذف لازم است.'}), 400
 
-    # 1. بررسی رمز عبور ادمین فعلی
-    if not g.user.check_password(admin_password):
-        flash('رمز عبور ادمین نادرست است.', 'danger')
-        return redirect(url_for('admin_dashboard'))
+    admin_password_provided = data.get('admin_password')
+
+    # 1. بررسی رمز عبور ادمین فعلی (g.user)
+    if not g.user.check_password(admin_password_provided):
+        return jsonify({'status': 'error', 'message': 'رمز عبور ادمین نادرست است.'}), 403 # Forbidden
 
     # 2. یافتن کاربری که قرار است حذف شود
     user_to_delete = db.session.get(User, user_id)
     if not user_to_delete:
-        flash('کاربر مورد نظر یافت نشد.', 'danger')
-        return redirect(url_for('admin_dashboard'))
+        return jsonify({'status': 'error', 'message': 'کاربر مورد نظر یافت نشد.'}), 404
 
-    # 3. جلوگیری از حذف خود ادمین
+    # 3. جلوگیری از حذف خود ادمین از این طریق
     if user_to_delete.id == g.user.id:
-        flash('شما نمی‌توانید حساب کاربری خود را حذف کنید.', 'warning')
-        return redirect(url_for('admin_dashboard'))
+        return jsonify({'status': 'error', 'message': 'شما نمی‌توانید حساب کاربری خود را از این طریق حذف کنید.'}), 403
 
-    # 4. انجام حذف کاربر
-    # به دلیل تنظیم cascade="all, delete-orphan" در مدل User،
-    # تمام پست‌ها و نشست‌های مرتبط با این کاربر نیز به طور خودکار حذف خواهند شد.
+    # 4. انجام حذف کاربر (نشست‌ها و پست‌هایش هم به خاطر cascade حذف می‌شوند)
     try:
-        username_deleted = user_to_delete.username # ذخیره نام کاربری برای نمایش در پیام
+        username_deleted = user_to_delete.username
         db.session.delete(user_to_delete)
         db.session.commit()
-        flash(f"کاربر '{username_deleted}' با موفقیت حذف شد.", 'success')
+        return jsonify({
+            'status': 'success',
+            'message': f"کاربر '{username_deleted}' (ID: {user_id}) با موفقیت حذف شد."
+        }), 200
     except Exception as e:
         db.session.rollback()
-        flash(f'خطا در حذف کاربر: {e}', 'danger')
         app.logger.error(f"Admin '{g.user.username}' failed to delete user ID {user_id}: {e}")
-
-    return redirect(url_for('admin_dashboard'))
+        return jsonify({'status': 'error', 'message': f'خطا در حذف کاربر: {e}'}), 500
 
 
 @app.route('/profile', methods=['GET', 'POST'])
@@ -445,51 +450,63 @@ def profile():
     return render_template('profile.html')
 
 
-@app.route('/profile/delete', methods=['POST'])
-@login_required_server_session # نیاز به لاگین
+@app.route('/profile/delete', methods=['DELETE'])
+@login_required_server_session #  چک کردن لاگین
 def delete_profile():
-    """پردازش درخواست حذف حساب کاربری توسط خود کاربر."""
-    password = request.form.get('password') # رمز عبور برای تایید هویت
+    """حذف حساب کاربری توسط خود کاربر با متد DELETE"""
+    # خواندن اطلاعات از بدنه درخواست (مثلاً JSON)
+    # اگر از fetch با بدنه JSON استفاده می‌کنید:
+    data = request.get_json()
+    if not data or 'password' not in data:
+        # یا flash('رمز عبور برای تایید حذف لازم است.', 'danger') و بازگشت به پروفایل
+        # اما چون این یک درخواست API-مانند است، بهتر است پاسخ JSON با کد خطا بدهیم
+        return jsonify({'message': 'رمز عبور برای تایید حذف لازم است.', 'status': 'error'}), 400
 
-    # 1. بررسی رمز عبور کاربر
+    password = data.get('password')
+
+    # 1. بررسی رمز عبور کاربر فعلی (با g.user)
     if not g.user.check_password(password):
-        flash('رمز عبور وارد شده برای تایید حذف نادرست است.', 'danger')
-        return redirect(url_for('profile'))
+        # flash('رمز عبور وارد شده برای تایید حذف نادرست است.', 'danger')
+        # return redirect(url_for('profile'))
+        return jsonify({'message': 'رمز عبور وارد شده برای تایید حذف نادرست است.', 'status': 'error'}), 403 # Forbidden
 
-    # 2. جلوگیری از حذف ادمین اصلی (مثلا با ID=1) - یک لایه امنیتی اضافه
-    # شما می‌توانید این شرط را بر اساس نیاز خود تغییر دهید یا حذف کنید
-    # if g.user.id == 1:
-    #      flash('ادمین اصلی اجازه حذف حساب خود را ندارد.', 'warning')
-    #      return redirect(url_for('profile'))
+    # 2. جلوگیری از حذف ادمین اصلی (ID=1)
+    if g.user.id == 1:
+         # flash('ادمین اصلی (ID=1) اجازه حذف حساب خود را ندارد.', 'warning')
+         # return redirect(url_for('profile'))
+         return jsonify({'message': 'ادمین اصلی (ID=1) اجازه حذف حساب خود را ندارد.', 'status': 'error'}), 403
 
     # 3. انجام عملیات حذف
     try:
-        user_to_delete = g.user # کاربری که می‌خواهیم حذف کنیم (کاربر فعلی)
-        username_deleted = user_to_delete.username # نام برای پیام
+        user_to_delete = g.user
+        username_deleted = user_to_delete.username
+        # session_to_delete = g.current_session # در صورت نیاز دستی حذف شود
 
-        # حذف کاربر از دیتابیس
-        # به دلیل cascade، پست‌ها و نشست‌های مرتبط نیز حذف خواهند شد.
         db.session.delete(user_to_delete)
+        # نشست‌ها و پست‌ها باید با cascade حذف شوند
         db.session.commit()
 
-        flash(f'حساب کاربری "{username_deleted}" با موفقیت برای همیشه حذف شد.', 'success')
+        # پاک کردن کوکی نشست در پاسخ (اینجا چون پاسخ JSON است، مستقیم انجام نمی‌شود)
+        # بهتر است کلاینت پس از دریافت پاسخ موفق، خودش کوکی را پاک کند یا ریدایرکت شود
+        # و در آن ریدایرکت، سرور کوکی را پاک کند.
+        # یا اینکه سرور یک پاسخ با دستور پاک کردن کوکی بدهد، اما با fetch پیچیده می‌شود.
+        # ساده‌ترین کار این است که کلاینت به صفحه لاگین ریدایرکت شود.
 
-        # پس از حذف، کاربر باید لاگ‌اوت شود
-        # ایجاد پاسخ برای ریدایرکت به صفحه لاگین
-        response = make_response(redirect(url_for('login')))
-        # پاک کردن کوکی نشست از مرورگر کاربر
-        response.set_cookie('server_session_id', '', expires=0, httponly=True, samesite='Lax') # samesite='Lax' توصیه می‌شود
-        # پاک کردن اطلاعات کاربر از g (اختیاری چون درخواست تمام می‌شود)
-        g.user = None
+        g.user = None # پاک کردن از g
         g.current_session = None
-        return response
+
+        # پاسخ موفقیت آمیز به کلاینت
+        # می‌توانیم URL برای ریدایرکت را هم در پاسخ بفرستیم
+        return jsonify({
+            'message': f'حساب کاربری "{username_deleted}" با موفقیت برای همیشه حذف شد.',
+            'status': 'success',
+            'redirect_url': url_for('login', _external=True) # آدرس کامل برای ریدایرکت کلاینت
+        }), 200 # یا 204 No Content اگر بدنه پاسخی نداریم
 
     except Exception as e:
         db.session.rollback()
-        flash(f'خطایی هنگام حذف حساب رخ داد: {e}', 'danger')
-        app.logger.error(f"Error deleting profile for user ID {g.user.id}: {e}")
-        # در صورت خطا، کاربر هنوز لاگین است، به صفحه پروفایل برمی‌گردانیم
-        return redirect(url_for('profile'))
+        app.logger.error(f"Error deleting profile for user ID {g.user.id if g.user else 'Unknown'}: {e}")
+        return jsonify({'message': f'خطایی هنگام حذف حساب رخ داد: {e}', 'status': 'error'}), 500
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -516,7 +533,7 @@ def login():
         # بررسی وجود کاربر و صحت رمز عبور
         if user and user.check_password(password):
             # --- ایجاد نشست جدید در سمت سرور ---
-            session_id = secrets.token_urlsafe(32) # تولید شناسه نشست امن و تصادفی
+            session_id = secrets.token_urlsafe(32) # تولید سشن آی دی بصورت تصادفی
             new_session = ServerSession(
                 session_id=session_id,
                 user_id=user.id,
@@ -559,8 +576,7 @@ def login():
                     session_id,          # مقدار کوکی (شناسه نشست)
                     max_age=int(cookie_max_age), # زمان انقضای کوکی به ثانیه
                     httponly=True,       # جلوگیری از دسترسی جاوااسکریپت به کوکی (مهم برای امنیت)
-                    # secure=request.is_secure, # فقط در HTTPS ارسال شود (در پروداکشن فعال کنید)
-                    samesite='Lax'       # محافظت در برابر حملات CSRF (توصیه شده)
+                    #samesite='Lax'       # محافظت در برابر حملات CSRF
                 )
                 return response
 
@@ -574,6 +590,7 @@ def login():
 
     # درخواست GET: نمایش فرم لاگین
     return render_template('login.html')
+
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -626,8 +643,9 @@ def register():
     # درخواست GET: نمایش فرم ثبت نام
     return render_template('register.html')
 
+
 @app.route('/logout', methods=['POST'])
-@login_required_server_session # فقط کاربر لاگین شده می‌تواند لاگ‌اوت کند
+@login_required_server_session #  چک کردن لاگین
 def logout():
     """
     پردازش درخواست خروج کاربر.
@@ -662,7 +680,7 @@ def logout():
 
 
 @app.route('/posts', methods=['POST'])
-@login_required_server_session # نیاز به لاگین برای ثبت پست
+@login_required_server_session #  چک کردن لاگین
 def submit_post():
     """پردازش فرم ثبت پست جدید."""
     post_text = request.form.get('post_text')
@@ -686,104 +704,104 @@ def submit_post():
     return redirect(url_for('index'))
 
 
-@app.route('/post/<int:post_id>/delete', methods=['POST'])
-@login_required_server_session # نیاز به لاگین
+@app.route('/post/<int:post_id>/delete', methods=['DELETE'])
+@login_required_server_session #  چک کردن لاگین
 def delete_post(post_id):
-    """حذف یک پست توسط نویسنده آن."""
-    # یافتن پست بر اساس ID
+    """حذف پست توسط نویسنده آن با متد DELETE"""
     post_to_delete = db.session.get(Post, post_id)
 
-    # اگر پستی با این ID وجود نداشت، خطای 404
     if not post_to_delete:
-        abort(404, description="پست مورد نظر یافت نشد.")
+        return jsonify({'status': 'error', 'message': 'پست مورد نظر یافت نشد.'}), 404
 
-    # بررسی اینکه آیا کاربر لاگین شده (g.user) نویسنده این پست است یا خیر
+    # آیا کاربر لاگین شده (g.user) نویسنده پست است؟
     if post_to_delete.user_id != g.user.id:
-        # اگر نویسنده نیست، اجازه حذف ندارد -> خطای 403
-        abort(403, description="شما اجازه حذف این پست را ندارید.")
+        return jsonify({'status': 'error', 'message': 'شما اجازه حذف این پست را ندارید.'}), 403 # Forbidden
 
-    # انجام عملیات حذف
+    # انجام حذف
     try:
         db.session.delete(post_to_delete)
         db.session.commit()
-        flash('پست شما با موفقیت حذف شد.', 'success')
+        # به جای flash، یک پاسخ JSON برای موفقیت ارسال می‌کنیم
+        return jsonify({'status': 'success', 'message': 'پست شما با موفقیت حذف شد.'}), 200 # یا 204 No Content
     except Exception as e:
         db.session.rollback()
-        flash(f'خطایی هنگام حذف پست رخ داد: {e}', 'danger')
-        app.logger.error(f"User '{g.user.username}' (ID: {g.user.id}) failed to delete own post ID {post_id}: {e}")
-
-    # بازگشت به صفحه اصلی (می‌توان به request.referrer هم بازگشت داد)
-    return redirect(url_for('index'))
+        app.logger.error(f"User '{g.user.username}' failed to delete own post ID {post_id}: {e}")
+        return jsonify({'status': 'error', 'message': f'خطایی هنگام حذف پست رخ داد: {e}'}), 500
 
 
-@app.route('/admin/post/<int:post_id>/delete', methods=['POST'])
-@login_required_server_session # نیاز به لاگین
-@admin_required             # نیاز به دسترسی ادمین
+@app.route('/admin/post/<int:post_id>/delete', methods=['DELETE']) 
+@login_required_server_session #  چک کردن لاگین
+@admin_required             # چک گردن ادمین
 def admin_delete_post(post_id):
-    """حذف هر پستی توسط کاربر ادمین."""
-    # یافتن پست بر اساس ID
-    post_to_delete = db.session.get(Post, post_id)
-    if not post_to_delete:
-        abort(404, description="پست مورد نظر یافت نشد.")
+    """حذف پست کاربران توسط سوپر ادمین با متد دیلیت"""
 
-    # ادمین نیاز به بررسی مالکیت پست ندارد و می‌تواند هر پستی را حذف کند
+    post_to_delete = db.session.get(Post, post_id)
+    
+    if g.user.id != 1:
+        return jsonify({'status': 'error', 'message': 'شما اجازه حذف این پست را ندارید.'}), 403 # Forbidden
+
+    if not post_to_delete:
+        return jsonify({'status': 'error', 'message': 'پست مورد نظر یافت نشد.'}), 404
+
     try:
-        # ذخیره نام نویسنده برای نمایش در پیام (اختیاری)
-        author_username = post_to_delete.author.username if post_to_delete.author else "ناشناس"
+        author_username = post_to_delete.author.username # نام نویسنده برای پیام
         db.session.delete(post_to_delete)
         db.session.commit()
-        flash(f'پست متعلق به کاربر "{author_username}" با موفقیت توسط ادمین حذف شد.', 'success')
+        return jsonify({
+            'status': 'success',
+            'message': f'پست متعلق به کاربر "{author_username}" با موفقیت توسط ادمین حذف شد.'
+        }), 200
     except Exception as e:
         db.session.rollback()
-        flash(f'خطایی هنگام حذف پست توسط ادمین رخ داد: {e}', 'danger')
         app.logger.error(f"Admin '{g.user.username}' failed to delete post ID {post_id}: {e}")
+        return jsonify({'status': 'error', 'message': f'خطایی هنگام حذف پست توسط ادمین رخ داد: {e}'}), 500
 
-    # بازگشت به صفحه اصلی یا داشبورد ادمین (اینجا به اصلی برمی‌گردیم)
-    return redirect(url_for('index'))
 
 
 # --- مدیریت خطاها ---
 @app.errorhandler(404)
 def page_not_found(e):
     """نمایش صفحه سفارشی برای خطای 404 (Not Found)."""
-    # g.user ممکن است در دسترس باشد یا نباشد، تمپلیت باید این را مدیریت کند
     return render_template('404.html'), 404
+
 
 @app.errorhandler(403)
 def forbidden(e):
     """نمایش صفحه سفارشی برای خطای 403 (Forbidden / Access Denied)."""
     # دریافت پیام خطا از آبجکت خطا (اگر توسط abort(403, description=...) تنظیم شده باشد)
     message = getattr(e, 'description', 'شما اجازه دسترسی به این صفحه یا انجام این عملیات را ندارید.')
-    # g.user باید در دسترس باشد (چون معمولا قبل از 403، چک لاگین انجام شده)
     return render_template('unauthorized.html', message=message), 403
 
-# --- تابع برای ایجاد اولیه پایگاه داده و کاربر ادمین ---
-# def init_db():
-#     """
-#     (این تابع به صورت مستقیم در اجرای اصلی استفاده نمی‌شود)
-#     جداول دیتابیس را ایجاد می‌کند (اگر وجود نداشته باشند).
-#     یک کاربر ادمین پیش‌فرض ('admin'/'adminpass') ایجاد می‌کند (اگر وجود نداشته باشد).
-#     می‌توان از طریق flask shell با دستور `from app import init_db; init_db()` اجرا کرد.
-#     """
-#     with app.app_context(): # نیاز به context برنامه برای کار با db
-#         try:
-#             db.create_all() # ایجاد جداول User, Post, ServerSession
-#             print("Database tables checked/created.")
-#             # بررسی و ایجاد کاربر ادمین پیش‌فرض
-#             if not User.query.filter_by(username='admin').first():
-#                 admin_user = User(username='admin', role='admin')
-#                 admin_user.set_password('adminpass') # **این رمز عبور را در پروداکشن تغییر دهید!**
-#                 db.session.add(admin_user)
-#                 db.session.commit()
-#                 print("Default admin user ('admin'/'adminpass') created.")
-#             else:
-#                 print("Default admin user already exists.")
-#         except Exception as e:
-#             print(f"An error occurred during DB initialization: {e}")
-#             app.logger.error(f"DB Init error: {e}")
 
 
-# --- اجرای اصلی برنامه ---
+#--- تابع برای ایجاد اولیه دیتابیس و سوپر ادمین ---
+def init_db():
+    """
+    (این تابع به صورت مستقیم در اجرای اصلی استفاده نمی‌شود)
+    جداول دیتابیس را ایجاد می‌کند (اگر وجود نداشته باشند).
+    یک کاربر ادمین پیش‌فرض ('admin'/'adminpass') ایجاد می‌کند (اگر وجود نداشته باشد).
+    می‌توان از طریق flask shell با دستور `from app import init_db; init_db()` اجرا کرد.
+    """
+    with app.app_context(): # نیاز به context برنامه برای کار با db
+        try:
+            db.create_all() # ایجاد جداول User, Post, ServerSession
+            print("Database tables checked/created.")
+            # بررسی و ایجاد کاربر ادمین پیش‌فرض
+            if not User.query.filter_by(username='admin').first():
+                admin_user = User(username='admin', role='admin')
+                admin_user.set_password('adminpass') # **این رمز عبور را در پروداکشن تغییر دهید!**
+                db.session.add(admin_user)
+                db.session.commit()
+                print("Default admin user ('admin'/'adminpass') created.")
+            else:
+                print("Default admin user already exists.")
+        except Exception as e:
+            print(f"An error occurred during DB initialization: {e}")
+            app.logger.error(f"DB Init error: {e}")
+
+
+
+# --- اجرای سرور ---
 if __name__ == '__main__':
     # ایجاد جداول دیتابیس و کاربر ادمین پیش‌فرض در هر بار اجرای برنامه (مناسب برای توسعه)
     with app.app_context():
