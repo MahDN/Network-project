@@ -38,7 +38,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
 const deleteButton = document.getElementById('submitDeleteProfile');
-const deleteForm = document.getElementById('deleteProfileForm'); // ممکن است برای CSRF token نیاز باشد
+const deleteForm = document.getElementById('deleteProfileForm'); // (** برای حملات CSRF پیشنهاد چت **)
 const passwordInput = document.getElementById('delete_confirm_password');
 const messageDiv = document.getElementById('deleteProfileMessage');
 
@@ -53,7 +53,7 @@ if (deleteButton) {
         const password = passwordInput.value;
         if (!password) {
             messageDiv.textContent = 'لطفا رمز عبور خود را وارد کنید.';
-            messageDiv.className = 'flash danger'; // از کلاس‌های فلش برای نمایش استفاده کنید
+            messageDiv.className = 'flash danger'; // استفاده از کلاس‌های فلش برای نمایش  
             return;
         }
 
@@ -67,14 +67,12 @@ if (deleteButton) {
             },
             body: JSON.stringify({ password: password })
         })
-        .then(response => response.json().then(data => ({ status: response.status, body: data }))) // هم وضعیت و هم بدنه را بگیریم
+        .then(response => response.json().then(data => ({ status: response.status, body: data }))) // دریافت وضعیت و بدنه
         .then(({ status, body }) => {
             messageDiv.textContent = body.message || 'پاسخی از سرور دریافت نشد.';
             if (body.status === 'success') {
                 messageDiv.className = 'flash success';
-                // پاک کردن کوکی نشست سمت کلاینت اگر لازم باشد
-                // document.cookie = "server_session_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;"; // <-- پاک کردن کوکی
-                // سپس ریدایرکت به صفحه لاگین که سرور گفته
+                //  ریدایرکت به صفحه ای که سرور گفته
                 if (body.redirect_url) {
                     window.location.href = body.redirect_url;
                 } else {
@@ -83,8 +81,6 @@ if (deleteButton) {
                 }
             } else {
                 messageDiv.className = 'flash danger';
-                // اگر کد وضعیت خاصی مد نظر است، می‌توانید آن را هم بررسی کنید
-                // مثلا if (status === 403) { ... }
             }
         })
         .catch(error => {

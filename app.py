@@ -7,17 +7,17 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 from urllib.parse import urlparse, urljoin
 
-# --- پیکربندی برنامه Flask ---
+# --- کانفیگ اپ Flask ---
 app = Flask(__name__)
-# کلید مخفی برای امنیت نشست‌ها و فرم‌ها (در محیط پروداکشن باید از متغیر محیطی خوانده شود)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a-very-secure-dev-secret-key-manual')
-# تنظیم زمان پیش‌فرض انقضای نشست (در صورت عدم انتخاب Remember Me)
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30) # زمان پیش‌فرض انقضای نشست (مثلا ۳۰ دقیقه)
+# کلید مخفی برای امنیت سشن ها و فرم‌ها
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a-secure-secret-key')
+# تنظیم زمان پیش‌فرض انقضای سشن (در صورت عدم انتخاب Remember Me)
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=2) # زمان پیش‌فرض انقضای سشن (مثلا 1 دقیقه برای تست)
 
-# --- پیکربندی پایگاه داده SQLite ---
+# ---  کانفیگ دیتابیس SQLite ---
 basedir = os.path.abspath(os.path.dirname(__file__))
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'app.db')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False # غیرفعال کردن ردیابی تغییرات SQLAlchemy برای بهینه‌سازی
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False # غیرفعال کردن ردیابی تغییرات SQLAlchemy برای بهینه‌سازی (**پیشنهاد چت**)
 
 # --- مقداردهی اولیه برای مدلها ---
 db = SQLAlchemy(app)
@@ -27,8 +27,8 @@ db = SQLAlchemy(app)
 @app.after_request
 def set_response_headers(response):
     """
-    افزودن هدرهای کنترل کش به پاسخ‌ها برای جلوگیری از کش شدن صفحات در مرورگر.
-    این کار باعث می‌شود کاربر همیشه آخرین نسخه صفحات را ببیند، مخصوصا بعد از لاگین/لاگ‌اوت.
+    افزودن هدرهای کنترل کش به پاسخ‌ها برای جلوگیری از کش شدن صفحات در مرورگر
+    این کار باعث می‌شود کاربر همیشه آخرین نسخه صفحات را ببیند، مخصوصا بعد از لاگین/لاگ‌اوت
     """
     if response.status_code == 200 and response.mimetype == 'text/html':
         response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
@@ -39,34 +39,35 @@ def set_response_headers(response):
 
 # --- مدل های دیتابیس ---
 class User(db.Model):
-    """مدل برای ذخیره اطلاعات کاربران."""
+    """مدل برای ذخیره کاربران."""
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False) # هش رمز عبور ذخیره می‌شود، نه خود رمز
     role = db.Column(db.String(20), nullable=False, default='user') # نقش کاربر: 'user' یا 'admin'
-    # ارتباط یک به چند با پست‌ها: با حذف کاربر، پست‌هایش هم حذف می‌شوند (cascade)
+    
+    # ارتباط 1 به many -- با حذف کاربر، پست‌هایش هم حذف می‌شوند 
     posts = db.relationship('Post', backref='author', lazy=True, cascade="all, delete-orphan")
-    # ارتباط یک به چند با نشست‌های سرور: با حذف کاربر، نشست‌هایش هم حذف می‌شوند (cascade)
+    # ارتباط 1 many با سشن های سرور: با حذف کاربر، سشن هایش هم حذف می‌شوند
     server_sessions = db.relationship('ServerSession', backref='user', lazy='dynamic', cascade="all, delete-orphan")
 
     def set_password(self, password):
         """هش کردن و تنظیم رمز عبور."""
-        self.password_hash = generate_password_hash(password)
+        self.password_hash = generate_password_hash(password) # توابع موجود
 
     def check_password(self, password):
         """بررسی صحت رمز عبور وارد شده با هش ذخیره شده."""
-        return check_password_hash(self.password_hash, password)
+        return check_password_hash(self.password_hash, password) # توابع موجود
 
     def __repr__(self):
         return f'<User {self.username} (Role: {self.role})>'
 
 
 class Post(db.Model):
-    """مدل برای ذخیره پست‌های متنی کاربران."""
+    """مدل برای ذخیره پست‌های کاربران."""
     id = db.Column(db.Integer, primary_key=True)
     text = db.Column(db.Text, nullable=False)
-    timestamp = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)) # زمان ایجاد پست با منطقه زمانی UTC
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False) # کلید خارجی به جدول کاربر
+    timestamp = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)) # زمان ایجاد پست با منطقه زمانی گرینویچ
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False) # کلید خارجی به شمای یوزر
 
     def __repr__(self):
         return f'<Post {self.id} by User {self.user_id}>'
@@ -75,24 +76,24 @@ class Post(db.Model):
 class ServerSession(db.Model):
     """مدل برای ذخیره اطلاعات نشست‌های فعال کاربران در سمت سرور."""
     id = db.Column(db.Integer, primary_key=True)
-    session_id = db.Column(db.String(100), unique=True, nullable=False, index=True) # شناسه یکتای نشست (ذخیره شده در کوکی کاربر)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False) # کلید خارجی به کاربر مرتبط با نشست
-    remembered = db.Column(db.Boolean, default=False, nullable=False) # آیا گزینه 'Remember Me' فعال بوده؟
+    session_id = db.Column(db.String(100), unique=True, nullable=False, index=True) # سشن آیدی (ذخیره شده در کوکی کاربر)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False) # کلید خارجی به یوزر مرتبط با نشست
+    remembered = db.Column(db.Boolean, default=False, nullable=False) # چک کردن remember me
     created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)) # زمان ایجاد نشست
     last_seen = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)) # آخرین زمان فعالیت با این نشست
-    user_agent = db.Column(db.String(200)) # اطلاعات مرورگر کاربر
+    user_agent = db.Column(db.String(200)) # اطلاعات مرورگر و سیستم‌عامل کاربر
     ip_address = db.Column(db.String(50)) # آدرس IP کاربر در زمان ایجاد نشست
 
     def __repr__(self):
-        return f'<ServerSession {self.session_id} for User {self.user_id} (Remembered: {self.remembered})>'
+        return f'<ServerSession {self.session_id} for User {self.user_id} (Remembered: {self.remembered})>' # نمایش اطلاعات نشست
 
 
-# --- بارگذاری اطلاعات کاربر قبل از هر درخواست ---
+# --- دریافت اطلاعات کاربر قبل از هر درخواست ---
 @app.before_request
 def load_user_from_server_session():
     """
     قبل از پردازش هر درخواست، این تابع اجرا می‌شود.
-    شناسه نشست را از کوکی 'server_session_id' می‌خواند،
+    سشن آیدی را از کوکی 'server_session_id' می‌خواند،
     نشست معتبر را در دیتابیس جستجو می‌کند،
     و در صورت یافتن و معتبر بودن نشست، اطلاعات کاربر مربوطه
     و خود نشست را در آبجکت g (مخصوص هر درخواست) قرار می‌دهد (g.user و g.current_session).
@@ -112,17 +113,17 @@ def load_user_from_server_session():
     if server_session:
         now = datetime.now(timezone.utc)
 
-        # تعیین طول عمر نشست سرور بر اساس وضعیت 'Remember Me'
+        # تعیین طول عمر نشست سرور بر اساس وضعیت Remember Me
         if server_session.remembered:
-            # اگر Remember Me فعال بوده، عمر نشست در سرور طولانی‌تر است (مثلا ۱ روز)
+            # اگر Remember Me فعال بوده، عمر نشست در سرور طولانی‌تر شود (مثلا 1 روز )
             session_lifetime = timedelta(days=1)
-            # print(f"Session {session_id} is 'Remembered'. Using 1 day lifetime for server check.") # برای دیباگ
+            # print(f"Session {session_id} is 'Remembered'. Using 1 day lifetime.") # برای دیباگ
         else:
-            # در غیر این صورت، از عمر پیش‌فرض برنامه استفاده می‌شود (مثلا ۳۰ دقیقه)
+            # اگر نبود، از عمر پیش‌فرض برنامه که اول کار ست کردیم استفاده می‌شود (مثلا 2 دقیقه)
             session_lifetime = app.config['PERMANENT_SESSION_LIFETIME']
-            # print(f"Session {session_id} is not 'Remembered'. Using {session_lifetime} lifetime for server check.") # برای دیباگ
+            # print(f"Session {session_id} is not 'Remembered'. Using {session_lifetime} lifetime.") # برای دیباگ
 
-        # اطمینان از اینکه last_seen دارای timezone است برای مقایسه صحیح
+        # اطمینان از اینکه last_seen دارای timezone است برای صحت مقایسه
         try:
             # اگر last_seen از نوع naive datetime باشد، آن را aware می‌کنیم
             if server_session.last_seen.tzinfo is None:
@@ -130,24 +131,23 @@ def load_user_from_server_session():
             else:
                  last_seen_aware = server_session.last_seen
         except AttributeError:
-             # این حالت نباید رخ دهد اگر داده‌ها درست ذخیره شده باشند
-             app.logger.error(f"Session {session_id} has invalid last_seen attribute or type: {server_session.last_seen}")
+             app.logger.error(f"Session {session_id} has invalid last_seen attribute or type: {server_session.last_seen}") # برای دیباگ
              # نشست نامعتبر را حذف می‌کنیم
              try:
                  db.session.delete(server_session)
                  db.session.commit()
              except Exception as e:
                  db.session.rollback()
-                 app.logger.error(f"Error deleting session {session_id} with invalid last_seen: {e}")
+                 app.logger.error(f"Error deleting session {session_id} with invalid last_seen: {e}") #دیباگ
              return
 
-        # بررسی انقضای نشست بر اساس آخرین فعالیت و طول عمر محاسبه شده
+        # بررسی انقضای نشست بر اساس آخرین فعالیت و طول عمر ست شده
         if now > last_seen_aware + session_lifetime:
-            print(f"Server session {session_id} expired based on last_seen ({last_seen_aware}) and its lifetime ({session_lifetime}). Deleting.")
+            print(f"Server session {session_id} expired based on last_seen ({last_seen_aware}) and its lifetime ({session_lifetime}). Deleting.") #دیباگ
             try:
                 db.session.delete(server_session)
                 db.session.commit()
-                # نیازی به تنظیم کوکی نیست، در درخواست بعدی کوکی نامعتبر خواهد بود
+                # در درخواست بعدی کوکی نامعتبر خواهد بود
             except Exception as e:
                 db.session.rollback()
                 app.logger.error(f"Error deleting expired session {session_id}: {e}")
@@ -165,8 +165,7 @@ def load_user_from_server_session():
                 db.session.commit()
             except Exception as e:
                 db.session.rollback()
-                # اگر به‌روزرسانی last_seen ناموفق بود، لاگ می‌گیریم
-                app.logger.warning(f"Could not update last_seen for session {session_id}: {e}")
+                app.logger.warning(f"Could not update last_seen for session {session_id}: {e}") # لاگ برای دیباگ 
         else:
             # اگر کاربری با آن user_id وجود نداشت (مثلا کاربر حذف شده)، نشست را حذف می‌کنیم
             print(f"User ID {server_session.user_id} not found for session {session_id}. Deleting session.")
@@ -176,7 +175,7 @@ def load_user_from_server_session():
             except Exception as e:
                 db.session.rollback()
                 app.logger.error(f"Error deleting session for non-existent user {server_session.user_id}: {e}")
-            # چون کاربر یافت نشد، g.user و g.current_session همان None باقی می‌مانند
+            # در انتها اگر کاربری پیدا نشود آبجکت g با مقداردهی اولیه باقی مماند
 
 
 
@@ -206,12 +205,12 @@ def admin_required(func):
         current_user = getattr(g, 'user', None)
         # کاربر باید لاگین باشد و نقش ادمین داشته باشد
         if current_user is None or current_user.role != 'admin':
-            # نمایش خطای 403 (Forbidden) با پیام مناسب
+            # نمایش خطای 403 (Forbidden) 
             abort(403, description="برای دسترسی به این صفحه باید ادمین باشید.")
         return func(*args, **kwargs)
     return decorated_view
 
-def is_safe_url(target):
+def is_safe_url(target): # **پیشنهاد چت**
     """
     بررسی می‌کند که آیا URL مقصد برای redirect امن است یا خیر.
     این کار برای جلوگیری از حملات Open Redirect مهم است.
@@ -235,15 +234,15 @@ def index():
     کاربران ادمین همه پست‌ها را می‌بینند (مگر در حال جستجو).
     """
     search_query = request.args.get('q', '').strip() # دریافت عبارت جستجو از query string
-    query = Post.query.order_by(Post.timestamp.desc()) # مرتب‌سازی پست‌ها بر اساس زمان (جدیدترین اول)
+    query = Post.query.order_by(Post.timestamp.desc()) # مرتب‌سازی پست‌ها بر اساس زمان (جدیدترین اول میاد)
 
     posts_to_show = []
     if search_query:
-        # فیلتر کردن پست‌ها بر اساس متن (بدون حساسیت به بزرگی و کوچکی حروف)
+        # فیلتر کردن پست‌ها بر اساس متن ( بزرگ و کوچکی حروف مهم نیست)
         query = query.filter(Post.text.ilike(f'%{search_query}%'))
-        posts_to_show = query.all() # نمایش تمام نتایج جستجو
+        posts_to_show = query.all()
     else:
-        # اگر جستجویی انجام نشده
+        # اگر جستجویی انجام نشده باشد
         # کاربر ادمین همه پست‌ها را می‌بیند
         if g.user.role == 'admin':
             posts_to_show = query.all()
@@ -252,7 +251,6 @@ def index():
             posts_to_show = query.limit(30).all()
 
     # ارسال لیست پست‌ها و عبارت جستجو به تمپلیت
-    # تمپلیت‌ها به g.user برای نمایش نام کاربر و ... دسترسی دارند
     return render_template('index.html', posts=posts_to_show, search_query=search_query)
 
 @app.route('/my-posts')
@@ -270,34 +268,34 @@ def my_posts():
 def admin_dashboard():
     """داشبورد مدیریتی برای ادمین‌ها."""
     # دریافت لیست تمام کاربران برای نمایش در داشبورد
-    all_users = User.query.order_by(User.role, User.username).all() # مرتب‌سازی بر اساس نقش و نام کاربری
+    all_users = User.query.order_by(User.role, User.username).all() # مرتب‌سازی بر اساس نقش و نام
     return render_template('admin.html', users=all_users)
 
 @app.route('/admin/create_user', methods=['POST'])
 @login_required_server_session # نیاز به لاگین
 @admin_required             # نیاز به دسترسی ادمین
 def admin_create_user():
-    """پردازش فرم ایجاد کاربر جدید توسط ادمین."""
+    """ فرم ایجاد کاربر جدید توسط ادمین."""
     username = request.form.get('username')
     password = request.form.get('password')
     role = request.form.get('role')
 
-    # اعتبار سنجی ورودی‌ها
-    if not username or not password or not role:
+    # بررسی صحت ورودی ها
+    if not username or not password or not role: # حداقل یک فیلد خالی باشه
         flash('تمام فیلدها (نام کاربری، رمز عبور، نقش) الزامی هستند.', 'warning')
         return redirect(url_for('admin_dashboard'))
 
-    if role not in ['user', 'admin']:
+    if role not in ['user', 'admin']: # رول غیر متعارف باشد (مثلا پست مستقیم)
         flash('نقش انتخاب شده نامعتبر است (فقط user یا admin مجاز است).', 'warning')
         return redirect(url_for('admin_dashboard'))
 
-    # بررسی وجود نام کاربری تکراری
+    # بررسی نام کاربری تکراری
     existing_user = User.query.filter_by(username=username).first()
     if existing_user:
         flash(f"نام کاربری '{username}' از قبل وجود دارد.", 'warning')
         return redirect(url_for('admin_dashboard'))
 
-    # ایجاد کاربر جدید
+    # ساخت  کاربر جدید
     new_user = User(username=username, role=role)
     new_user.set_password(password) # هش کردن رمز عبور
 
@@ -306,7 +304,7 @@ def admin_create_user():
         db.session.commit()
         flash(f"کاربر '{username}' با نقش '{role}' با موفقیت ایجاد شد.", 'success')
     except Exception as e:
-        db.session.rollback() # بازگرداندن تغییرات در صورت بروز خطا
+        db.session.rollback() # بازگرداندن تغییرات در صورت وجود خطا
         flash(f'خطا در ایجاد کاربر: {e}', 'danger')
         app.logger.error(f"Admin '{g.user.username}' failed to create user '{username}': {e}")
 
@@ -321,28 +319,28 @@ def admin_set_user_role(user_id):
     admin_password = request.form.get('admin_password') # رمز عبور ادمین فعلی برای تایید
     new_role = request.form.get('new_role') # نقش جدید مورد نظر
 
-    # 1. بررسی رمز عبور ادمین فعلی (g.user)
+    #  بررسی رمز عبور ادمین فعلی (g.user)
     if not g.user.check_password(admin_password):
         flash('رمز عبور ادمین نادرست است.', 'danger')
         return redirect(url_for('admin_dashboard'))
 
-    # 2. بررسی اعتبار نقش جدید
+    # بررسی صحت نقش جدید
     if new_role not in ['user', 'admin']:
         flash('نقش انتخاب شده نامعتبر است.', 'warning')
         return redirect(url_for('admin_dashboard'))
 
-    # 3. یافتن کاربری که قرار است نقشش تغییر کند
+    # یافتن کاربری که قرار است نقشش تغییر کند
     user_to_modify = db.session.get(User, user_id)
     if not user_to_modify:
         flash('کاربر مورد نظر یافت نشد.', 'danger')
         return redirect(url_for('admin_dashboard'))
 
-    # 4. جلوگیری از تغییر نقش خود ادمین (برای امنیت بیشتر)
+    # جلوگیری از تغییر نقش خود ادمین
     if user_to_modify.id == g.user.id:
         flash('شما نمی‌توانید نقش خود را تغییر دهید.', 'warning')
         return redirect(url_for('admin_dashboard'))
 
-    # 5. انجام تغییر نقش و ذخیره در دیتابیس
+    # انجام تغییر نقش و ذخیره در دیتابیس
     try:
         user_to_modify.role = new_role
         db.session.commit()
@@ -355,7 +353,7 @@ def admin_set_user_role(user_id):
     return redirect(url_for('admin_dashboard'))
 
 
-@app.route('/admin/user/<int:user_id>/delete', methods=['DELETE']) # <--- تغییر از POST به DELETE
+@app.route('/admin/user/<int:user_id>/delete', methods=['DELETE'])
 @login_required_server_session
 @admin_required
 def admin_delete_user(user_id):
@@ -367,20 +365,20 @@ def admin_delete_user(user_id):
 
     admin_password_provided = data.get('admin_password')
 
-    # 1. بررسی رمز عبور ادمین فعلی (g.user)
+    #  بررسی رمز عبور ادمین فعلی (g.user)
     if not g.user.check_password(admin_password_provided):
         return jsonify({'status': 'error', 'message': 'رمز عبور ادمین نادرست است.'}), 403 # Forbidden
 
-    # 2. یافتن کاربری که قرار است حذف شود
+    # یافتن کاربری که قرار است حذف شود
     user_to_delete = db.session.get(User, user_id)
     if not user_to_delete:
         return jsonify({'status': 'error', 'message': 'کاربر مورد نظر یافت نشد.'}), 404
 
-    # 3. جلوگیری از حذف خود ادمین از این طریق
+    # جلوگیری از حذف خود ادمین از این طریق
     if user_to_delete.id == g.user.id:
         return jsonify({'status': 'error', 'message': 'شما نمی‌توانید حساب کاربری خود را از این طریق حذف کنید.'}), 403
 
-    # 4. انجام حذف کاربر (نشست‌ها و پست‌هایش هم به خاطر cascade حذف می‌شوند)
+    # انجام حذف کاربر (نشست‌ها و پست‌هایش هم به خاطر cascade حذف می‌شوند)
     try:
         username_deleted = user_to_delete.username
         db.session.delete(user_to_delete)
@@ -409,7 +407,7 @@ def profile():
         new_password = request.form.get('new_password')
         confirm_new_password = request.form.get('confirm_new_password')
 
-        # اعتبار سنجی رمز عبور فعلی و رمز جدید
+        # بررسی صحت رمز عبور فعلی و رمز جدید
         if not g.user.check_password(current_password):
             flash('رمز عبور فعلی نادرست است.', 'danger')
         elif not new_password:
@@ -417,11 +415,11 @@ def profile():
         elif new_password != confirm_new_password:
             flash('رمز عبور جدید و تکرار آن با هم مطابقت ندارند.', 'warning')
         else:
-            # اگر همه چیز درست بود، رمز را تغییر می‌دهیم
+            # اگر مشکلی نبود رمز را تغییر می‌دهیم
             try:
-                # *** مهم: حذف تمام نشست‌های دیگر این کاربر ***
-                # این کار امنیت را افزایش می‌دهد و کاربر را از دستگاه‌های دیگر خارج می‌کند.
+                # حذف تمام نشست‌های دیگر این کاربر 
                 current_session_id = g.current_session.session_id if g.current_session else None
+                
                 # تمام نشست‌های کاربر به جز نشست فعلی را کوئری می‌زنیم
                 other_sessions = ServerSession.query.filter(
                     ServerSession.user_id == g.user.id,
@@ -436,17 +434,16 @@ def profile():
                 # ذخیره تغییرات (رمز جدید و حذف نشست‌های قدیمی)
                 db.session.commit()
                 flash('رمز عبور شما با موفقیت تغییر کرد و از دستگاه‌های دیگر خارج شدید.', 'success')
-                # پس از موفقیت، فرم دوباره نمایش داده می‌شود (با پیام موفقیت)
-                return redirect(url_for('profile')) # یا return render_template('profile.html')
+                return redirect(url_for('profile'))
 
             except Exception as e:
                 db.session.rollback()
                 flash(f'خطایی هنگام تغییر رمز عبور رخ داد: {e}', 'danger')
                 app.logger.error(f"Error changing password for user '{g.user.username}': {e}")
-        # اگر خطایی در اعتبار سنجی بود، فرم دوباره با پیام خطا نمایش داده می‌شود
+        # اگر خطایی در اعتبار سنجی بود، پروفایل دوباره با پیام خطا نمایش داده می‌شود
         return render_template('profile.html')
 
-    # درخواست GET: فقط نمایش فرم پروفایل (تغییر رمز و حذف حساب)
+    # درخواست GET: فقط نمایش پروفایل (تغییر رمز و حذف حساب)
     return render_template('profile.html')
 
 
@@ -454,54 +451,44 @@ def profile():
 @login_required_server_session #  چک کردن لاگین
 def delete_profile():
     """حذف حساب کاربری توسط خود کاربر با متد DELETE"""
-    # خواندن اطلاعات از بدنه درخواست (مثلاً JSON)
-    # اگر از fetch با بدنه JSON استفاده می‌کنید:
+    # خواندن اطلاعات از بدنه درخواست ( JSON)
     data = request.get_json()
     if not data or 'password' not in data:
-        # یا flash('رمز عبور برای تایید حذف لازم است.', 'danger') و بازگشت به پروفایل
-        # اما چون این یک درخواست API-مانند است، بهتر است پاسخ JSON با کد خطا بدهیم
         return jsonify({'message': 'رمز عبور برای تایید حذف لازم است.', 'status': 'error'}), 400
 
     password = data.get('password')
 
-    # 1. بررسی رمز عبور کاربر فعلی (با g.user)
+    # بررسی رمز عبور کاربر فعلی (با g.user)
     if not g.user.check_password(password):
         # flash('رمز عبور وارد شده برای تایید حذف نادرست است.', 'danger')
         # return redirect(url_for('profile'))
         return jsonify({'message': 'رمز عبور وارد شده برای تایید حذف نادرست است.', 'status': 'error'}), 403 # Forbidden
 
-    # 2. جلوگیری از حذف ادمین اصلی (ID=1)
+    # جلوگیری از حذف ادمین اصلی (ID=1)
     if g.user.id == 1:
          # flash('ادمین اصلی (ID=1) اجازه حذف حساب خود را ندارد.', 'warning')
          # return redirect(url_for('profile'))
          return jsonify({'message': 'ادمین اصلی (ID=1) اجازه حذف حساب خود را ندارد.', 'status': 'error'}), 403
 
-    # 3. انجام عملیات حذف
+    # انجام عملیات حذف
     try:
         user_to_delete = g.user
         username_deleted = user_to_delete.username
-        # session_to_delete = g.current_session # در صورت نیاز دستی حذف شود
-
         db.session.delete(user_to_delete)
         # نشست‌ها و پست‌ها باید با cascade حذف شوند
         db.session.commit()
 
-        # پاک کردن کوکی نشست در پاسخ (اینجا چون پاسخ JSON است، مستقیم انجام نمی‌شود)
-        # بهتر است کلاینت پس از دریافت پاسخ موفق، خودش کوکی را پاک کند یا ریدایرکت شود
-        # و در آن ریدایرکت، سرور کوکی را پاک کند.
-        # یا اینکه سرور یک پاسخ با دستور پاک کردن کوکی بدهد، اما با fetch پیچیده می‌شود.
-        # ساده‌ترین کار این است که کلاینت به صفحه لاگین ریدایرکت شود.
+        # پاک کردن کوکی نشست در پاسخ به کلاینت( مرورگر) (200)
 
         g.user = None # پاک کردن از g
         g.current_session = None
 
         # پاسخ موفقیت آمیز به کلاینت
-        # می‌توانیم URL برای ریدایرکت را هم در پاسخ بفرستیم
         return jsonify({
             'message': f'حساب کاربری "{username_deleted}" با موفقیت برای همیشه حذف شد.',
             'status': 'success',
-            'redirect_url': url_for('login', _external=True) # آدرس کامل برای ریدایرکت کلاینت
-        }), 200 # یا 204 No Content اگر بدنه پاسخی نداریم
+            'redirect_url': url_for('login', _external=True)
+        }), 200
 
     except Exception as e:
         db.session.rollback()
@@ -515,16 +502,16 @@ def login():
     صفحه ورود کاربر.
     نمایش فرم لاگین (GET).
     پردازش فرم لاگین، بررسی اعتبار کاربر، ایجاد نشست سمت سرور و تنظیم کوکی (POST).
-    مدیریت گزینه 'Remember Me'.
+    مدیریت 'Remember Me'.
     """
-    # اگر کاربر از قبل لاگین است (مثلا با کوکی معتبر آمده)، به صفحه اصلی هدایت شود
+    # اگر کاربر از قبل لاگین است (مثلا با کوکی معتبر اومده)، به صفحه اصلی هدایت میشود
     if getattr(g, 'user', None):
         return redirect(url_for('index'))
 
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        # بررسی اینکه آیا چک‌باکس 'remember' انتخاب شده است
+        # بررسی اینکه آیا چک‌باکس remember me انتخاب شده است
         remember_me = request.form.get('remember') == 'on'
 
         # یافتن کاربر بر اساس نام کاربری
@@ -548,35 +535,34 @@ def login():
 
                 flash('ورود با موفقیت انجام شد.', 'success')
 
-                # مدیریت ریدایرکت به صفحه قبلی (next) یا صفحه پیش‌فرض
+                # مدیریت ریدایرکت به صفحه قبلی (next)
                 next_page = request.args.get('next')
-                # بررسی امنیتی برای جلوگیری از Open Redirect
+                # بررسی امنیتی برای جلوگیری از Open Redirect (**پیشنهاد چت**)
                 if next_page and not is_safe_url(next_page):
                     app.logger.warning(f"Unsafe redirect attempt to '{next_page}' after login for user '{username}'.")
                     abort(400, "آدرس بازگشتی نامعتبر است.") # Bad Request
 
                 # تعیین صفحه مقصد پس از لاگین
-                # اگر 'next' معتبر بود به آنجا، وگرنه ادمین به داشبورد و کاربر عادی به ایندکس
+                # اگر next معتبر بود به آنجا، وگرنه ادمین به داشبورد و کاربر عادی به ایندکس
                 redirect_target = next_page or (url_for('admin_dashboard') if user.role == 'admin' else url_for('index'))
 
-                # ایجاد پاسخ ریدایرکت
+                # ایجاد ریسپانس ریدایرکت
                 response = make_response(redirect(redirect_target))
 
-                # --- تنظیم کوکی نشست در مرورگر کاربر ---
+                # --- تنظیم کوکی نشست در مرورگر یوزر ---
                 if remember_me:
-                    # اگر Remember Me فعال است، کوکی عمر طولانی‌تری دارد (مثلا ۱ روز)
-                    # این زمان باید با session_lifetime نشست 'Remembered' در load_user_from_server_session همخوانی داشته باشد
+                    # اگر Remember Me فعال است، کوکی عمر طولانی‌تری دارد (مثلا 1 روز)
                     cookie_max_age = timedelta(days=1).total_seconds()
                 else:
-                    # اگر Remember Me فعال نیست، کوکی به اندازه عمر نشست پیش‌فرض برنامه عمر دارد (مثلا ۳۰ دقیقه)
+                    # اگر Remember Me فعال نیست، کوکی به اندازه عمر نشست ست شده پیش فرض عمر دارد (مثلا 2 دقیقه)
                     cookie_max_age = app.config['PERMANENT_SESSION_LIFETIME'].total_seconds()
 
                 response.set_cookie(
-                    'server_session_id', # نام کوکی
-                    session_id,          # مقدار کوکی (شناسه نشست)
-                    max_age=int(cookie_max_age), # زمان انقضای کوکی به ثانیه
-                    httponly=True,       # جلوگیری از دسترسی جاوااسکریپت به کوکی (مهم برای امنیت)
-                    #samesite='Lax'       # محافظت در برابر حملات CSRF
+                    'server_session_id',
+                    session_id,         
+                    max_age=int(cookie_max_age),
+                    httponly=True,       # جلوگیری از دسترسی جاوااسکریپت به کوکی (مهم برای امنیت) (**پیشنهاد چت**)
+                    #samesite='Lax'       # محافظت در برابر حملات CSRF (**پیشنهاد چت**)
                 )
                 return response
 
@@ -634,10 +620,7 @@ def register():
             db.session.rollback()
             flash(f'خطایی هنگام ثبت نام رخ داد: {e}', 'danger')
             app.logger.error(f"Error on registration for username '{username}': {e}")
-            # در صورت خطا، فرم ثبت نام دوباره با پیام خطا نمایش داده می‌شود
-            # کد وضعیت 500 (Internal Server Error) می‌تواند مناسب باشد
-            # return render_template('register.html'), 500
-            # یا فقط فرم را دوباره رندر کنیم
+            # در صورت خطا، فرم ثبت نام دوباره نمایش داده می‌شود
             return render_template('register.html')
 
     # درخواست GET: نمایش فرم ثبت نام
@@ -667,13 +650,13 @@ def logout():
     else:
         # این حالت نباید رخ دهد چون login_required_server_session باید جلوی آن را بگیرد
         flash('نشست معتبری برای خروج یافت نشد (شما از قبل خارج شده‌اید).', 'warning')
-        app.logger.warning("Logout route accessed without a valid server session found in 'g'.")
+        app.logger.warning("Logout route accessed without a valid server session found in g.") # دیباگ 
 
     # ایجاد پاسخ ریدایرکت به صفحه لاگین
     response = make_response(redirect(url_for('login')))
     # پاک کردن کوکی نشست از مرورگر با تنظیم تاریخ انقضا در گذشته
     response.set_cookie('server_session_id', '', expires=0, httponly=True, samesite='Lax')
-    # پاک کردن اطلاعات از g (اختیاری)
+    
     g.user = None
     g.current_session = None
     return response
@@ -689,7 +672,6 @@ def submit_post():
         return redirect(url_for('index'))
 
     # ایجاد پست جدید و انتساب آن به کاربر لاگین شده (g.user)
-    # timestamp به طور خودکار توسط default در مدل Post تنظیم می‌شود
     new_post = Post(text=post_text.strip(), author=g.user)
     try:
         db.session.add(new_post)
@@ -721,8 +703,8 @@ def delete_post(post_id):
     try:
         db.session.delete(post_to_delete)
         db.session.commit()
-        # به جای flash، یک پاسخ JSON برای موفقیت ارسال می‌کنیم
-        return jsonify({'status': 'success', 'message': 'پست شما با موفقیت حذف شد.'}), 200 # یا 204 No Content
+        # یک پاسخ JSON برای موفقیت ارسال می‌کنیم
+        return jsonify({'status': 'success', 'message': 'پست شما با موفقیت حذف شد.'}), 200
     except Exception as e:
         db.session.rollback()
         app.logger.error(f"User '{g.user.username}' failed to delete own post ID {post_id}: {e}")
@@ -768,54 +750,48 @@ def page_not_found(e):
 @app.errorhandler(403)
 def forbidden(e):
     """نمایش صفحه سفارشی برای خطای 403 (Forbidden / Access Denied)."""
-    # دریافت پیام خطا از آبجکت خطا (اگر توسط abort(403, description=...) تنظیم شده باشد)
     message = getattr(e, 'description', 'شما اجازه دسترسی به این صفحه یا انجام این عملیات را ندارید.')
     return render_template('unauthorized.html', message=message), 403
 
 
 
-#--- تابع برای ایجاد اولیه دیتابیس و سوپر ادمین ---
-def init_db():
-    """
-    (این تابع به صورت مستقیم در اجرای اصلی استفاده نمی‌شود)
-    جداول دیتابیس را ایجاد می‌کند (اگر وجود نداشته باشند).
-    یک کاربر ادمین پیش‌فرض ('admin'/'adminpass') ایجاد می‌کند (اگر وجود نداشته باشد).
-    می‌توان از طریق flask shell با دستور `from app import init_db; init_db()` اجرا کرد.
-    """
-    with app.app_context(): # نیاز به context برنامه برای کار با db
-        try:
-            db.create_all() # ایجاد جداول User, Post, ServerSession
-            print("Database tables checked/created.")
-            # بررسی و ایجاد کاربر ادمین پیش‌فرض
-            if not User.query.filter_by(username='admin').first():
-                admin_user = User(username='admin', role='admin')
-                admin_user.set_password('adminpass') # **این رمز عبور را در پروداکشن تغییر دهید!**
-                db.session.add(admin_user)
-                db.session.commit()
-                print("Default admin user ('admin'/'adminpass') created.")
-            else:
-                print("Default admin user already exists.")
-        except Exception as e:
-            print(f"An error occurred during DB initialization: {e}")
-            app.logger.error(f"DB Init error: {e}")
+# #--- تابع برای ایجاد اولیه دیتابیس و سوپر ادمین ---
+# def init_db():
+#     """
+#     جداول دیتابیس را ایجاد می‌کند (اگر وجود نداشته باشند)
+#     یک سوپر ادمین ('admin'/'adminpass') ایجاد می‌کند
+#     """
+#     with app.app_context(): 
+#         try:
+#             db.create_all() # ایجاد جداول User, Post, ServerSession
+#             print("Database tables checked/created.")
+#             # بررسی و ایجاد سوپر ادمین(ID=1)
+#             if not User.query.filter_by(username='admin').first():
+#                 admin_user = User(username='admin', role='admin')
+#                 admin_user.set_password('adminpass') # پسورد پیش فرض سوپر ادمین
+#                 db.session.add(admin_user)
+#                 db.session.commit()
+#                 print("Default admin user ('admin'/'adminpass') created.")
+#             else:
+#                 print("Default admin user already exists.")
+#         except Exception as e:
+#             print(f"An error occurred during DB initialization: {e}")
+#             app.logger.error(f"DB Init error: {e}")
 
 
 
 # --- اجرای سرور ---
 if __name__ == '__main__':
-    # ایجاد جداول دیتابیس و کاربر ادمین پیش‌فرض در هر بار اجرای برنامه (مناسب برای توسعه)
+    # ایجاد جداول دیتابیس و سوپر ادمین در هر بار اجرای برنامه (اگر نبودند)
     with app.app_context():
         db.create_all() # اطمینان از وجود جداول
-        # ایجاد کاربر ادمین پیش‌فرض اگر وجود ندارد
+         # بررسی و ایجاد سوپر ادمین(ID=1)
         if not User.query.filter_by(username='admin').first():
                 admin_user = User(username='admin', role='admin')
-                admin_user.set_password('adminpass') # **رمز عبور پیش‌فرض برای توسعه**
+                admin_user.set_password('adminpass') # پسورد پیش فرض سوپر ادمین
                 db.session.add(admin_user)
                 db.session.commit()
                 print("Default admin user ('admin'/'adminpass') checked/created.")
 
-    # اجرای سرور توسعه Flask
-    # debug=True: فعال کردن حالت دیباگ (نمایش خطاها در مرورگر، بارگذاری مجدد خودکار کد) - **در پروداکشن False باشد**
-    # host='0.0.0.0': گوش دادن به تمام IP های سیستم (قابل دسترس بودن در شبکه محلی)
-    # port=5000: پورت پیش‌فرض Flask
+    # اجرای سرور Flask
     app.run(host='0.0.0.0', port=5000, debug=True)
